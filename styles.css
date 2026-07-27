@@ -1,0 +1,354 @@
+/* Kinopoisk Light Button & Popup Styles v60.0 - 2nd Line Placement */
+
+.kp-dl-wrapper {
+  position: relative !important;
+  display: block !important;
+  margin-top: 14px !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  margin-bottom: 0 !important;
+  width: 100% !important;
+  z-index: 9999 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  box-sizing: border-box !important;
+  clear: both !important;
+}
+
+.kp-dl-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+  height: 52px !important;
+  padding: 0 28px !important;
+  min-width: 180px !important;
+  background-color: #f2f2f2 !important;
+  color: #141414 !important;
+  font-weight: 700 !important;
+  font-size: 16px !important;
+  line-height: 24px !important;
+  border-radius: 26px !important;
+  border: none !important;
+  cursor: pointer !important;
+  transition: background-color 0.2s ease, transform 0.2s ease !important;
+  user-select: none !important;
+  outline: none !important;
+  text-decoration: none !important;
+  white-space: nowrap !important;
+  box-sizing: border-box !important;
+}
+
+.kp-dl-btn:hover {
+  background-color: #E5E5E5 !important;
+  transform: scale(1.02) !important;
+}
+
+.kp-dl-btn:active {
+  transform: scale(0.98) !important;
+}
+
+.kp-dl-btn svg {
+  fill: #ff6600 !important;
+  flex-shrink: 0 !important;
+  width: 22px !important;
+  height: 22px !important;
+}
+
+.kp-dl-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  width: 480px;
+  max-width: calc(100vw - 40px);
+  background-color: #ffffff;
+  border: 1px solid #e0e0e5;
+  border-radius: 20px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16), 0 4px 12px rgba(0, 0, 0, 0.08);
+  padding: 16px;
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 10000;
+  box-sizing: border-box;
+  animation: kpDlFadeIn 0.15s ease-out;
+  color: #141414;
+}
+
+.kp-dl-wrapper.active .kp-dl-menu {
+  display: flex;
+}
+
+@keyframes kpDlFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.kp-dl-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f0f0f3;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.kp-dl-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #141414;
+  white-space: nowrap;
+}
+
+.kp-dl-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: #f5f5f8;
+  border: 1px solid #e0e0e5;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #555555;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.kp-dl-refresh-btn:hover {
+  background: #eaeaea;
+  color: #141414;
+}
+
+.kp-dl-refresh-btn svg {
+  fill: currentColor;
+}
+
+.kp-dl-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.kp-dl-filter-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #8c8c99;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.kp-dl-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.kp-dl-filter-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 14px;
+  border: 1px solid #e0e0e5;
+  background: #f5f5f8;
+  color: #333338;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.kp-dl-filter-btn:hover {
+  background: #eaeaea;
+  color: #141414;
+}
+
+.kp-dl-filter-btn.active {
+  background: #ff6600;
+  color: #ffffff;
+  border-color: #ff6600;
+  font-weight: 700;
+}
+
+.kp-dl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.kp-dl-list::-webkit-scrollbar {
+  width: 5px;
+}
+.kp-dl-list::-webkit-scrollbar-thumb {
+  background: #cccccc;
+  border-radius: 3px;
+}
+
+.kp-dl-torrent-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #f8f8fb;
+  border-radius: 12px;
+  padding: 12px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  transition: background-color 0.15s ease;
+}
+
+.kp-dl-torrent-card:hover {
+  background-color: #f2f2f7;
+}
+
+.kp-dl-torrent-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.kp-dl-torrent-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #141414;
+  line-height: 1.35;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.kp-dl-header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  max-width: 45%;
+}
+
+.kp-dl-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  background: #e8e8ee;
+  color: #333333;
+  white-space: nowrap;
+}
+
+.kp-dl-badge-season {
+  background: #e6f0ff;
+  color: #0055cc;
+}
+
+.kp-dl-badge-ep {
+  background: #f0f7ed;
+  color: #2e7d32;
+}
+
+.kp-dl-torrent-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #666666;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.kp-dl-audio-tag {
+  color: #e65c00;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.kp-dl-size {
+  color: #555555;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.kp-dl-seeds {
+  color: #00aa00;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.kp-dl-actions {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.kp-dl-main-download-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 9px;
+  background-color: #ff6600;
+  color: #ffffff !important;
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 8px;
+  border: none !important;
+  outline: none !important;
+  cursor: pointer;
+  text-decoration: none !important;
+  transition: background-color 0.15s ease;
+  box-sizing: border-box;
+}
+
+.kp-dl-main-download-btn:hover {
+  background-color: #e65c00;
+}
+
+.kp-dl-loading, .kp-dl-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: #888888;
+  font-size: 13px;
+  gap: 8px;
+  text-align: center;
+}
+
+.kp-dl-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(255, 102, 0, 0.2);
+  border-top-color: #ff6600;
+  border-radius: 50%;
+  animation: kpDlSpin 0.8s linear infinite;
+}
+
+@keyframes kpDlSpin {
+  to { transform: rotate(360deg); }
+}

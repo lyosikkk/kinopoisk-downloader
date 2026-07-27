@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v69.0.0
- * Strict Media Type Separation (Series vs Movie Isolation)
+ * Background Service Worker for Kinopoisk Downloader v71.0.0
+ * Fixed Over-aggressive TV Series Detection ('ИЗ ' false positive)
  */
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -34,7 +34,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v69.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v71.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -76,7 +76,7 @@ const TORRENT_TECH_TAGS = new Set([
   'bdrip', 'webrip', 'web-dl', 'webdl', 'hdtv', 'hdtvrip', 'dvdrip', 'dvd', 'remux', 'satrip', 'tvrip',
   '1080p', '720p', '2160p', '4k', 'uhd', 'hevc', 'x264', 'x265', 'h264', 'h265', 'hdr', 'hdr10', 'dovi',
   'dub', 'mvo', 'avo', 'dubbing', 'lostfilm', 'hdrezka', 'redheadsound', 'rhs', 'exkinoray', 'generalfilm',
-  'сезон', 'сезоны', 'серия', 'серии', 'серий', 'из', 'complete'
+  'сезон', 'сезоны', 'серия', 'серии', 'серий', 'complete'
 ]);
 
 function sanitizeString(str) {
@@ -182,7 +182,7 @@ function detectSeason(title) {
     };
   }
 
-  if (upper.includes('ВСЕ СЕЗОНЫ') || upper.includes('ПОЛНЫЙ СЕРИАЛ') || upper.includes('ВСЕ СЕРИИ')) {
+  if (upper.includes('ВСЕ СЕЗОНЫ') || upper.includes('ПОЛНЫЙ СЕРИАЛ')) {
     return {
       type: 'ALL_PACK',
       label: 'Полный сериал'
@@ -210,7 +210,7 @@ function detectEpisodes(title) {
     };
   }
 
-  const singleEpMatch = upper.match(/E(\d{1,2})\b/) || upper.match(/СЕРИЯ\s*(\d{1,2})/) || upper.match(/(\d{1,2})\s*СЕРИЯ/);
+  const singleEpMatch = upper.match(/\bE(\d{1,2})\b/) || upper.match(/СЕРИЯ\s*(\d{1,2})/) || upper.match(/(\d{1,2})\s*СЕРИЯ/);
   if (singleEpMatch) {
     const epNum = parseInt(singleEpMatch[1], 10);
     return {
@@ -220,7 +220,7 @@ function detectEpisodes(title) {
     };
   }
 
-  if (upper.includes('ПОЛНЫЙ СЕЗОН') || upper.includes('ИЗ ') || upper.includes('СЕРИИ')) {
+  if (upper.includes('ПОЛНЫЙ СЕЗОН') || /\b\d+\s+ИЗ\s+\d+\s+СЕРИ/i.test(upper) || /\bВСЕ\s+СЕРИИ\b/i.test(upper)) {
     return {
       type: 'FULL_SEASON',
       label: 'Все серии сезона'
@@ -235,7 +235,7 @@ function isJunk(title) {
   return UNIVERSAL_JUNK_KEYWORDS.some(word => upper.includes(word));
 }
 
-// Разграничение фильмов и сериалов
+// Точное разграничение типа контента (фильм / сериал)
 function isMediaTypeMatching(torrentTitle, seasonData, episodeData, isSeriesOnPage) {
   const isTorrentSeries = Boolean(
     seasonData || 
@@ -254,7 +254,6 @@ function isMediaTypeMatching(torrentTitle, seasonData, episodeData, isSeriesOnPa
   );
 
   if (isSeriesOnPage) {
-    // На странице СЕРИАЛА: показывать только сериалы!
     if (isTorrentMovie && !isTorrentSeries) {
       return false;
     }
@@ -262,7 +261,7 @@ function isMediaTypeMatching(torrentTitle, seasonData, episodeData, isSeriesOnPa
       return false;
     }
   } else {
-    // На странице ФИЛЬМА: показывать только фильмы (без сезонов и серий)!
+    // На странице ФИЛЬМА отбрасываются только явные сериальные раздачи
     if (isTorrentSeries) {
       return false;
     }
@@ -539,6 +538,10 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
     queries.push(`${cleanRu} сериал`);
   } else if (cleanRu && !isSeries) {
     queries.push(`${cleanRu} ${cleanYear}`.trim());
+    if (cleanOrig && cleanOrig.toLowerCase() !== cleanRu.toLowerCase()) {
+      queries.push(cleanOrig);
+      queries.push(`${cleanOrig} ${cleanYear}`.trim());
+    }
   }
 
   const rawResults = [];
@@ -566,9 +569,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
     item.seasonData = detectSeason(item.title);
     item.episodeData = detectEpisodes(item.title);
 
-    // Разграничение типа контента (сериал на странице сериала, фильм на странице фильма)
     if (!isMediaTypeMatching(item.title, item.seasonData, item.episodeData, isSeries)) return false;
-
     if (!isUniversalMovieMatch(item.title, cleanRu, cleanOrig, isSeries)) return false;
     if (!isYearCompatible(item.title, cleanYear, isSeries)) return false;
     
@@ -593,7 +594,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v69.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v71.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

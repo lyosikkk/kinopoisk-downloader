@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v85.0.0
- * Strict Title Cleanser & Universal Rating Extractor
+ * Background Service Worker for Kinopoisk Downloader v86.0.0
+ * Universal Structural Title Cleanser (Zero Hardcoded Genre Lists)
  */
 
 const globalDescriptionCache = {};
@@ -33,11 +33,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 function cleanTitleString(str) {
   if (!str) return '';
-  let s = str.replace(/[\r\n\t]+/g, ' ').trim();
+
+  let s = String(str).replace(/[\r\n\t]+/g, ' ').trim();
+
+  if (/^[1-9]\.\d$/.test(s)) return '';
+
+  s = s.replace(/^[1-9]\.\d\s+/, '').replace(/\s+[1-9]\.\d$/, '');
   s = s.replace(/[\.,\(\s]+\b(19\d\d|20\d\d)\b[\s\S]*/gi, '');
-  s = s.replace(/[\.,\/\(—\s]+\b(драма|комедия|боевик|триллер|детектив|фантастика|фэнтези|ужасы|мелодрама|приключения|криминал|семейный|мультфильм|аниме|документальный|история|музыка|биография|вестерн|мюзикл|сериал|фильм)\b[\s\S]*/gi, '');
+
+  if (s.includes('.')) {
+    const parts = s.split('.');
+    if (parts.length > 1 && parts[0].trim().length > 1) {
+      const secondPart = parts[1].trim();
+      if (secondPart.length > 0 && (secondPart.length <= 15 || /^[a-zа-яё\s,]+$/i.test(secondPart))) {
+        s = parts[0].trim();
+      }
+    }
+  }
+
   s = s.replace(/[\.,\-—\s]+$/, '');
   s = s.replace(/^["'«»“”„\s]+|["'«»“”„\s]+$/g, '').trim();
+
   return s;
 }
 
@@ -278,7 +294,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v85.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v86.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -836,7 +852,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v85.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v86.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

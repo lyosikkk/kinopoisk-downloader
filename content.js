@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v85.0.0
- * Pure Title Formatting & Guaranteed DOM Rating Fallback
+ * Kinopoisk Downloader - Content Script v86.0.0
+ * Systemic Structural Title Extraction & Strict Rating Discrimination
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v85.0.0');
+  console.log('[Kinopoisk Downloader] Active v86.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -73,11 +73,27 @@
 
   function cleanTitleString(str) {
     if (!str) return '';
-    let s = str.replace(/[\r\n\t]+/g, ' ').trim();
+
+    let s = String(str).replace(/[\r\n\t]+/g, ' ').trim();
+
+    if (/^[1-9]\.\d$/.test(s)) return '';
+
+    s = s.replace(/^[1-9]\.\d\s+/, '').replace(/\s+[1-9]\.\d$/, '');
     s = s.replace(/[\.,\(\s]+\b(19\d\d|20\d\d)\b[\s\S]*/gi, '');
-    s = s.replace(/[\.,\/\(—\s]+\b(драма|комедия|боевик|триллер|детектив|фантастика|фэнтези|ужасы|мелодрама|приключения|криминал|семейный|мультфильм|аниме|документальный|история|музыка|биография|вестерн|мюзикл|сериал|фильм)\b[\s\S]*/gi, '');
+
+    if (s.includes('.')) {
+      const parts = s.split('.');
+      if (parts.length > 1 && parts[0].trim().length > 1) {
+        const secondPart = parts[1].trim();
+        if (secondPart.length > 0 && (secondPart.length <= 15 || /^[a-zа-яё\s,]+$/i.test(secondPart))) {
+          s = parts[0].trim();
+        }
+      }
+    }
+
     s = s.replace(/[\.,\-—\s]+$/, '');
     s = s.replace(/^["'«»“”„\s]+|["'«»“”„\s]+$/g, '').trim();
+
     return s;
   }
 
@@ -110,19 +126,48 @@
 
   function extractCardTitle(link) {
     if (!link) return '';
+
     const img = link.querySelector('img');
-    if (img && img.alt) return cleanTitleString(img.alt);
+    if (img && img.alt) {
+      const cleaned = cleanTitleString(img.alt);
+      if (cleaned && !/^[1-9]\.\d$/.test(cleaned)) return cleaned;
+    }
 
     const titleAttr = link.getAttribute('title') || link.getAttribute('aria-label');
-    if (titleAttr) return cleanTitleString(titleAttr);
+    if (titleAttr) {
+      const cleaned = cleanTitleString(titleAttr);
+      if (cleaned && !/^[1-9]\.\d$/.test(cleaned)) return cleaned;
+    }
 
     let parentCard = link.parentElement;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       if (!parentCard) break;
-      const titleEl = parentCard.querySelector('[class*="title"], [class*="name"], span, p');
-      if (titleEl && titleEl.innerText && titleEl.innerText.length > 1) {
-        return cleanTitleString(titleEl.innerText);
+
+      const candidates = parentCard.querySelectorAll('[class*="title"], [class*="name"], [class*="Title"], [class*="Name"]');
+      for (const el of candidates) {
+        const cls = (el.className || '').toLowerCase();
+        if (cls.includes('rating') || cls.includes('score') || cls.includes('vote') || cls.includes('badge')) continue;
+
+        const text = el.innerText || el.textContent || '';
+        const cleaned = cleanTitleString(text);
+        if (cleaned && !/^[1-9]\.\d$/.test(cleaned) && cleaned.length > 1) {
+          return cleaned;
+        }
       }
+
+      const fallbackElements = parentCard.querySelectorAll('a, p, div');
+      for (const el of fallbackElements) {
+        const cls = (el.className || '').toLowerCase();
+        if (cls.includes('rating') || cls.includes('score') || cls.includes('vote') || cls.includes('badge')) continue;
+        if (el.querySelector('[class*="rating"], [class*="score"]')) continue;
+
+        const text = el.innerText || el.textContent || '';
+        const cleaned = cleanTitleString(text);
+        if (cleaned && !/^[1-9]\.\d$/.test(cleaned) && cleaned.length > 1) {
+          return cleaned;
+        }
+      }
+
       parentCard = parentCard.parentElement;
     }
 
@@ -298,7 +343,8 @@
     const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
-    if (titleEl) titleEl.innerText = cleanTitleString(data.title) || 'Загрузка...';
+    const cleanTitle = cleanTitleString(data.title);
+    if (titleEl) titleEl.innerText = cleanTitle || 'Загрузка...';
 
     const finalRating = data.rating || extractCardRating(targetEl);
 
@@ -567,7 +613,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v85.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v86.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

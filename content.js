@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v104.0.0
- * Poster Tooltip IMDb Badges + Side-by-Side Main Page IMDb Badge Injector
+ * Kinopoisk Downloader - Content Script v105.0.0
+ * Poster Tooltip IMDb Badges + Side-by-Side Main Page IMDb Badge Injector with Direct XML Fallback
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v104.0.0');
+  console.log('[Kinopoisk Downloader] Active v105.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -75,6 +75,34 @@
     return s;
   }
 
+  async function fetchKinopoiskRatingXmlDirect(filmId) {
+    if (!filmId) return null;
+    try {
+      const url = `https://rating.kinopoisk.ru/${filmId}.xml`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const text = await res.text();
+        const imdbMatch = text.match(/<imdb_rating[^>]*>([\d\.]+)</i);
+        const kpMatch = text.match(/<kp_rating[^>]*>([\d\.]+)</i);
+
+        let imdb = '';
+        let kp = '';
+
+        if (imdbMatch) {
+          const num = parseFloat(imdbMatch[1]);
+          if (!isNaN(num) && num > 0) imdb = num.toFixed(1);
+        }
+        if (kpMatch) {
+          const num = parseFloat(kpMatch[1]);
+          if (!isNaN(num) && num > 0) kp = num.toFixed(1);
+        }
+
+        return { imdb, kp };
+      }
+    } catch (e) {}
+    return null;
+  }
+
   // --- Main Film/Series Page IMDb Badge Injector ---
   function injectMainPageImdbBadge() {
     if (!isMainMediaPage()) return;
@@ -106,39 +134,47 @@
 
     if (!scoreEl) return;
 
-    const cardTitle = extractFilmData().ruTitle;
+    const renderBadge = (imdbVal) => {
+      if (!imdbVal || document.getElementById('kp-dl-main-imdb-badge')) return;
 
-    chrome.runtime.sendMessage({
-      action: 'FETCH_FILM_DESCRIPTION',
-      filmId: filmId,
-      cardTitle: cardTitle,
-      isSeries: isSeries
-    }, (res) => {
-      if (res && res.success && res.data && res.data.ratingImdb) {
-        if (document.getElementById('kp-dl-main-imdb-badge')) return;
+      const badge = document.createElement('div');
+      badge.id = 'kp-dl-main-imdb-badge';
+      badge.className = 'kp-dl-main-imdb-badge';
+      badge.innerText = `IMDb ${imdbVal}`;
+      badge.title = 'Текущий живой рейтинг IMDb';
 
-        const badge = document.createElement('div');
-        badge.id = 'kp-dl-main-imdb-badge';
-        badge.className = 'kp-dl-main-imdb-badge';
-        badge.innerText = `IMDb ${res.data.ratingImdb}`;
-        badge.title = 'Текущий живой рейтинг IMDb';
+      const parent = scoreEl.parentElement;
+      if (parent) {
+        if (window.getComputedStyle(parent).display.includes('flex')) {
+          parent.appendChild(badge);
+        } else {
+          const container = document.createElement('div');
+          container.className = 'kp-dl-score-row';
+          container.style.display = 'inline-flex';
+          container.style.alignItems = 'center';
+          container.style.gap = '12px';
 
-        const parent = scoreEl.parentElement;
-        if (parent) {
-          if (window.getComputedStyle(parent).display.includes('flex')) {
-            parent.appendChild(badge);
-          } else {
-            const container = document.createElement('div');
-            container.className = 'kp-dl-score-row';
-            container.style.display = 'inline-flex';
-            container.style.alignItems = 'center';
-            container.style.gap = '12px';
-
-            parent.insertBefore(container, scoreEl);
-            container.appendChild(scoreEl);
-            container.appendChild(badge);
-          }
+          parent.insertBefore(container, scoreEl);
+          container.appendChild(scoreEl);
+          container.appendChild(badge);
         }
+      }
+    };
+
+    fetchKinopoiskRatingXmlDirect(filmId).then(data => {
+      if (data && data.imdb) {
+        renderBadge(data.imdb);
+      } else {
+        chrome.runtime.sendMessage({
+          action: 'FETCH_FILM_DESCRIPTION',
+          filmId: filmId,
+          cardTitle: extractFilmData().ruTitle,
+          isSeries: isSeries
+        }, (res) => {
+          if (res && res.success && res.data && res.data.ratingImdb) {
+            renderBadge(res.data.ratingImdb);
+          }
+        });
       }
     });
   }
@@ -553,6 +589,26 @@
             description: ''
           }, link, isSeries);
 
+          // 1. Direct XML Fetch for instant IMDb rating
+          fetchKinopoiskRatingXmlDirect(filmId).then(xmlData => {
+            if (xmlData && xmlData.imdb && currentHoverFilmId === filmId) {
+              if (!descriptionCache[filmId]) {
+                descriptionCache[filmId] = {
+                  filmId,
+                  title: cardTitle,
+                  rating: cardRating || xmlData.kp,
+                  ratingImdb: xmlData.imdb,
+                  runtimeText: '',
+                  description: ''
+                };
+              } else {
+                descriptionCache[filmId].ratingImdb = xmlData.imdb;
+              }
+              showTooltipData(descriptionCache[filmId], link, isSeries);
+            }
+          });
+
+          // 2. Complete Description & Runtime Fetch
           chrome.runtime.sendMessage({
             action: 'FETCH_FILM_DESCRIPTION',
             filmId: filmId,
@@ -569,12 +625,16 @@
               }
             } else {
               if (currentHoverFilmId === filmId) {
-                showTooltipData({
-                  title: cardTitle || 'Кинопоиск',
-                  rating: cardRating,
-                  runtimeText: '',
-                  description: 'Описание отсутствует.'
-                }, link, isSeries);
+                if (descriptionCache[filmId]) {
+                  showTooltipData(descriptionCache[filmId], link, isSeries);
+                } else {
+                  showTooltipData({
+                    title: cardTitle || 'Кинопоиск',
+                    rating: cardRating,
+                    runtimeText: '',
+                    description: 'Описание отсутствует.'
+                  }, link, isSeries);
+                }
               }
             }
           });
@@ -750,7 +810,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v104.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v105.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

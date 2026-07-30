@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v94.0.0
- * Accurate Series Seasons (No 'Сериал' Fallback), Movie Runtime Display & Guaranteed IMDb Extraction
+ * Background Service Worker for Kinopoisk Downloader v95.0.0
+ * Live IMDb Rating Fetcher (Direct from IMDb.com) & Accurate Media Tooltip
  */
 
 const globalDescriptionCache = {};
@@ -100,41 +100,78 @@ function parseRatingValue(rObj) {
   return '';
 }
 
-function parseImdbRating(obj) {
-  if (!obj) return '';
-  if (typeof obj === 'number' || typeof obj === 'string') {
-    const num = parseFloat(obj);
-    if (!isNaN(num) && num > 0 && num <= 10) return num.toFixed(1);
+// Fetch Live True Rating Directly from IMDb.com
+async function fetchTrueImdbRating(imdbId, origTitle = '', year = '') {
+  let targetId = imdbId;
+
+  if (!targetId && origTitle) {
+    try {
+      const q = origTitle.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+      if (q) {
+        const firstChar = q.charAt(0);
+        const sugUrl = `https://v3.sg.media-imdb.com/suggestion/${firstChar}/${encodeURIComponent(q)}.json`;
+        const sugRes = await fetch(sugUrl);
+        if (sugRes.ok) {
+          const sugData = await sugRes.json();
+          if (sugData && Array.isArray(sugData.d) && sugData.d.length > 0) {
+            const match = sugData.d.find(item => item.id && item.id.startsWith('tt'));
+            if (match) targetId = match.id;
+          }
+        }
+      }
+    } catch (e) {}
   }
-  if (typeof obj === 'object') {
-    const candidate = obj.imdb || obj.imdbRating || obj.rating?.imdb || obj.rating?.filmCrypto?.imdbRating || obj.ratingImdb || obj.imdbValue;
-    if (candidate) {
-      const num = parseFloat(candidate);
-      if (!isNaN(num) && num > 0 && num <= 10) return num.toFixed(1);
+
+  if (!targetId) return '';
+
+  try {
+    const imdbUrl = `https://www.imdb.com/title/${targetId}/`;
+    const res = await fetch(imdbUrl, {
+      headers: {
+        'Accept-Language': 'en-US,en;q=0.9',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+
+    if (res.ok) {
+      const html = await res.text();
+      const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/i);
+      if (jsonLdMatch) {
+        try {
+          const ldData = JSON.parse(jsonLdMatch[1]);
+          const ratingVal = ldData?.aggregateRating?.ratingValue;
+          if (ratingVal) {
+            const num = parseFloat(ratingVal);
+            if (!isNaN(num) && num > 0 && num <= 10) {
+              return num.toFixed(1);
+            }
+          }
+        } catch (e) {}
+      }
+
+      const ratingMatch = html.match(/"ratingValue":\s*"?([\d\.]+)"?/i) || html.match(/aggregateRating[\s\S]{1,100}?([\d\.]+)/i);
+      if (ratingMatch) {
+        const num = parseFloat(ratingMatch[1]);
+        if (!isNaN(num) && num > 0 && num <= 10) {
+          return num.toFixed(1);
+        }
+      }
     }
-  }
+  } catch (e) {}
+
   return '';
 }
 
-function deepFindImdbRating(obj) {
+function deepFindImdbId(obj) {
   if (!obj || typeof obj !== 'object') return '';
 
-  const direct = parseImdbRating(obj);
-  if (direct) return direct;
-
-  if (obj.imdb) {
-    const parsed = parseRatingValue(obj.imdb);
-    if (parsed) return parsed;
-  }
-  if (obj.imdbRating) {
-    const parsed = parseRatingValue(obj.imdbRating);
-    if (parsed) return parsed;
-  }
+  if (typeof obj.imdbId === 'string' && obj.imdbId.startsWith('tt')) return obj.imdbId;
+  if (typeof obj.externalId?.imdb === 'string' && obj.externalId.imdb.startsWith('tt')) return obj.externalId.imdb;
+  if (typeof obj.filmCrypto?.imdbId === 'string' && obj.filmCrypto.imdbId.startsWith('tt')) return obj.filmCrypto.imdbId;
 
   for (const k of Object.keys(obj)) {
-    if (k.toLowerCase().includes('imdb')) {
-      const val = parseRatingValue(obj[k]);
-      if (val) return val;
+    if (k.toLowerCase().includes('imdb') && typeof obj[k] === 'string' && obj[k].startsWith('tt')) {
+      return obj[k];
     }
   }
 
@@ -181,6 +218,7 @@ function findKinopoiskMediaData(obj, targetId, targetTitle = '', hintIsSeries = 
   const rawShortDesc = obj.topText || obj.shortDescription || obj.socialArgument || obj.shortSynopsis;
   const rawSynopsis = obj.synopsis || obj.description || obj.annotation;
   const rawTitle = obj.title || obj.name || obj.ruName || obj.russianTitle || obj.originalTitle;
+  const origTitle = obj.originalTitle || obj.englishTitle || '';
 
   const cleanRawTitle = rawTitle ? cleanTitleString(rawTitle) : '';
   const cleanTargetTitle = targetTitle ? cleanTitleString(targetTitle) : '';
@@ -199,8 +237,8 @@ function findKinopoiskMediaData(obj, targetId, targetTitle = '', hintIsSeries = 
     if (rawTitle && (rawShortDesc || rawSynopsis)) {
       const year = obj.year || (obj.releaseDate ? String(obj.releaseDate).substring(0, 4) : '');
       const rating = parseRatingValue(obj.rating) || parseRatingValue(obj.userRating) || parseRatingValue(obj.ratingValue);
-      const ratingImdb = deepFindImdbRating(obj);
-
+      
+      const imdbId = deepFindImdbId(obj);
       const durationMinutes = obj.filmLength || obj.movieLength || obj.duration || obj.durationMinutes || obj.durationInMinutes || obj.runtime;
 
       let seasonsCount = obj.seasonsCount || obj.totalSeasons || obj.seasonsInfo?.seasonsCount;
@@ -214,10 +252,12 @@ function findKinopoiskMediaData(obj, targetId, targetTitle = '', hintIsSeries = 
       if (descToUse || cleanRawTitle) {
         return {
           filmId: targetId,
+          imdbId,
+          origTitle,
           title: cleanRawTitle,
           year: year ? String(year) : '',
           rating,
-          ratingImdb,
+          ratingImdb: '',
           runtimeText,
           description: descToUse || 'Описание отсутствует.'
         };
@@ -308,25 +348,41 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
       clearTimeout(timeoutId);
 
       if (html && html.length > 200) {
-        // 1. Universal recursive scan of __NEXT_DATA__
+        let found = null;
+        let imdbId = '';
+
+        const ttMatch = html.match(/tt\d{7,8}/i);
+        if (ttMatch) imdbId = ttMatch[0];
+
         const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/i);
         if (nextDataMatch) {
           try {
             const nextData = JSON.parse(nextDataMatch[1]);
-            const found = findKinopoiskMediaData(nextData?.props?.pageProps, filmId, cardTitle, hintIsSeries);
-            if (found && (found.description || found.title)) {
-              globalDescriptionCache[filmId] = found;
-              return found;
-            }
+            found = findKinopoiskMediaData(nextData?.props?.pageProps, filmId, cardTitle, hintIsSeries);
+            if (found && found.imdbId) imdbId = found.imdbId;
           } catch (e) {}
         }
 
-        // 2. HTML regex fallback
+        let origTitle = found?.origTitle || '';
+        if (!origTitle) {
+          const origMatch = html.match(/class="[^"]*originalTitle[^"]*"[^>]*>([^<]+)</i);
+          if (origMatch) origTitle = origMatch[1].trim();
+        }
+
+        // Fetch Live True IMDb Rating directly from IMDb.com!
+        const liveImdbRating = await fetchTrueImdbRating(imdbId, origTitle || cardTitle, found?.year);
+
+        if (found) {
+          found.ratingImdb = liveImdbRating;
+          globalDescriptionCache[filmId] = found;
+          return found;
+        }
+
+        // HTML Regex fallback
         let shortDesc = '';
         let title = cardTitle ? cleanTitleString(cardTitle) : '';
         let year = '';
         let rating = '';
-        let ratingImdb = '';
         let runtimeText = '';
 
         const topTextMatch = html.match(/class="[^"]*topText[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
@@ -343,16 +399,6 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
         if (ratingMatch) {
           const numR = parseFloat(ratingMatch[1]);
           if (!isNaN(numR) && numR > 0) rating = numR.toFixed(1);
-        }
-
-        const imdbMatch = html.match(/"imdb":\s*([\d\.]+)/i) ||
-                          html.match(/"imdbRating":\s*"?([\d\.]+)"?/i) ||
-                          html.match(/IMDb:\s*([\d\.]+)/i) ||
-                          html.match(/"ratingImdb":\s*"?([\d\.]+)"?/i) ||
-                          html.match(/imdb[\s\S]{1,30}?([\d\.]+)/i);
-        if (imdbMatch) {
-          const numI = parseFloat(imdbMatch[1]);
-          if (!isNaN(numI) && numI > 0) ratingImdb = numI.toFixed(1);
         }
 
         let seasonsCount = null;
@@ -388,7 +434,7 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
             title: title || 'Кинопоиск',
             year: year ? String(year) : '',
             rating,
-            ratingImdb,
+            ratingImdb: liveImdbRating,
             runtimeText,
             description: shortDesc || 'Описание отсутствует.'
           };
@@ -414,7 +460,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v94.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v95.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -972,7 +1018,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v94.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v95.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

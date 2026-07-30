@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v72.0.0
- * Added Poster Hover Tooltips for Film/Series Descriptions
+ * Kinopoisk Downloader - Content Script v73.0.0
+ * Short Description, Rounded Rating, Smooth Animation, Genre Removed
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v72.0.0');
+  console.log('[Kinopoisk Downloader] Active v73.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -44,7 +44,6 @@
       </div>
       <div class="kp-dl-tooltip-meta">
         <span class="kp-dl-tooltip-year"></span>
-        <span class="kp-dl-tooltip-genre"></span>
       </div>
       <div class="kp-dl-tooltip-desc"></div>
     `;
@@ -93,20 +92,22 @@
     const titleEl = tooltipEl.querySelector('.kp-dl-tooltip-title');
     const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
     const yearEl = tooltipEl.querySelector('.kp-dl-tooltip-year');
-    const genreEl = tooltipEl.querySelector('.kp-dl-tooltip-genre');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
     if (titleEl) titleEl.innerText = data.title || 'Без названия';
 
     if (ratingEl) {
       if (data.rating) {
-        ratingEl.innerText = data.rating;
-        ratingEl.style.display = 'inline-block';
         const numRating = parseFloat(data.rating);
-        if (!isNaN(numRating)) {
+        if (!isNaN(numRating) && numRating > 0) {
+          const roundedRating = numRating.toFixed(1);
+          ratingEl.innerText = roundedRating;
+          ratingEl.style.display = 'inline-block';
           if (numRating >= 7.5) ratingEl.style.background = '#3bb33b';
           else if (numRating >= 6.0) ratingEl.style.background = '#777777';
           else ratingEl.style.background = '#e65050';
+        } else {
+          ratingEl.style.display = 'none';
         }
       } else {
         ratingEl.style.display = 'none';
@@ -114,8 +115,7 @@
     }
 
     if (yearEl) yearEl.innerText = data.year ? `${data.year} г.` : '';
-    if (genreEl) genreEl.innerText = data.genre ? `• ${data.genre}` : '';
-    if (descEl) descEl.innerText = data.description || 'Описание отсутствует.';
+    if (descEl) descEl.innerText = data.description || 'Краткое описание отсутствует.';
 
     positionTooltip(targetEl);
     tooltipEl.classList.add('visible');
@@ -134,7 +134,6 @@
 
       const filmId = match[2];
 
-      // If we are on the film's main page, avoid showing tooltip for the main title/poster
       if (location.pathname.includes(`/film/${filmId}/`) || location.pathname.includes(`/series/${filmId}/`)) {
         const h1 = document.querySelector('h1');
         if (h1 && h1.parentElement && h1.parentElement.contains(link)) return;
@@ -151,7 +150,7 @@
         } else {
           showTooltipData({
             title: 'Загрузка...',
-            description: 'Получение описания с Кинопоиска...'
+            description: 'Получение краткого описания...'
           }, link);
 
           chrome.runtime.sendMessage({
@@ -337,7 +336,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v72.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v73.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

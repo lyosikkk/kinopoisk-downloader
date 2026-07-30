@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v74.0.0
- * Instant Local SSR Cache Scanner, Clean Quotes, Ultra-Fast Tooltip
+ * Kinopoisk Downloader - Content Script v75.0.0
+ * Instant Local SSR Cache Scanner with topText priority
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v74.0.0');
+  console.log('[Kinopoisk Downloader] Active v75.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -50,7 +50,7 @@
         if (!obj || typeof obj !== 'object') return;
 
         const id = obj.id || obj.filmId || obj.movieId;
-        const shortDesc = obj.shortDescription || obj.synopsis || obj.slogan;
+        const shortDesc = obj.topText || obj.shortDescription || obj.synopsis || obj.slogan;
         const rawTitle = obj.title || obj.name || obj.ruName || obj.russianTitle;
 
         if (id && rawTitle && shortDesc) {
@@ -397,7 +397,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v74.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v75.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

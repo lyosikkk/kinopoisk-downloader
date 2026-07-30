@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v74.0.0
- * Universal Short Description & Instant Pre-fetch Engine
+ * Background Service Worker for Kinopoisk Downloader v75.0.0
+ * Added topText support (Kinopoisk Hero Tagline/Synopsis class styles_topText__)
  */
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -45,7 +45,7 @@ function findKinopoiskMediaData(obj, targetId) {
   const currentId = obj.id || obj.filmId || obj.movieId;
   const isMatchId = currentId && String(currentId) === String(targetId);
 
-  const shortDesc = obj.shortDescription || obj.synopsis || obj.slogan;
+  const shortDesc = obj.topText || obj.shortDescription || obj.synopsis || obj.slogan;
   const rawTitle = obj.title || obj.name || obj.ruName || obj.russianTitle;
 
   if (isMatchId || shortDesc) {
@@ -123,17 +123,18 @@ async function fetchFilmDescription(filmId) {
             } catch (e) {}
           }
 
-          // 2. Universal HTML Synopsis Fallback
+          // 2. HTML topText / Synopsis Fallback
           let shortDesc = '';
           let title = '';
           let year = '';
           let rating = '';
 
-          const synopsisMatch = html.match(/class="[^"]*synopsis[^"]*"[^>]*>([\s\S]*?)<\/p>/i) ||
-                                html.match(/data-tid="[^"]*synopsis[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
-                                html.match(/class="[^"]*short-description[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
-          if (synopsisMatch) {
-            shortDesc = synopsisMatch[1].replace(/<[^>]+>/g, '').trim();
+          const topTextMatch = html.match(/class="[^"]*topText[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
+                               html.match(/class="[^"]*socialArgument[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
+                               html.match(/class="[^"]*synopsis[^"]*"[^>]*>([\s\S]*?)<\/p>/i) ||
+                               html.match(/data-tid="[^"]*synopsis[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+          if (topTextMatch) {
+            shortDesc = topTextMatch[1].replace(/<[^>]+>/g, '').trim();
           }
 
           const ratingMatch = html.match(/"ratingValue":\s*"?([\d\.]+)"?/i) ||
@@ -195,7 +196,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v74.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v75.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -753,7 +754,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v74.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v75.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v98.0.0
+ * Kinopoisk Downloader - Content Script v101.0.0
  * Poster Tooltip IMDb Badges + Side-by-Side Main Page IMDb Badge Injector
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v98.0.0');
+  console.log('[Kinopoisk Downloader] Active v101.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -62,7 +62,7 @@
     return false;
   }
 
-  // --- Main Film/Series Page IMDb Badge Injector (Placed DIRECTLY side-by-side next to Kinopoisk Rating score) ---
+  // --- Main Film/Series Page IMDb Badge Injector ---
   function injectMainPageImdbBadge() {
     if (!isMainMediaPage()) return;
     if (document.getElementById('kp-dl-main-imdb-badge')) return;
@@ -73,7 +73,6 @@
     const filmId = currentUrlMatch[2];
     const isSeries = location.pathname.includes('/series/');
 
-    // Find the main KP rating score element (the big rating number like 6.2, 7.8, 8.0)
     let scoreEl = null;
 
     const candidates = Array.from(document.querySelectorAll('[class*="rating"], [class*="score"], [class*="vote"], a[href*="votes"], span, div'));
@@ -113,7 +112,6 @@
         badge.innerText = `IMDb ${res.data.ratingImdb}`;
         badge.title = 'Текущий живой рейтинг IMDb';
 
-        // Wrap scoreEl and badge into a horizontal flex container side-by-side
         const parent = scoreEl.parentElement;
         if (parent) {
           if (window.getComputedStyle(parent).display.includes('flex')) {
@@ -147,23 +145,10 @@
     if (!str) return '';
 
     let s = String(str).replace(/[\r\n\t]+/g, ' ').trim();
-
     if (/^[1-9]\.\d$/.test(s)) return '';
 
     s = s.replace(/^[1-9]\.\d\s+/, '').replace(/\s+[1-9]\.\d$/, '');
-    s = s.replace(/[\.,\(\s]+\b(19\d\d|20\d\d)\b[\s\S]*/gi, '');
-
-    if (s.includes('.')) {
-      const parts = s.split('.');
-      if (parts.length > 1 && parts[0].trim().length > 1) {
-        const secondPart = parts[1].trim();
-        if (secondPart.length > 0 && (secondPart.length <= 15 || /^[a-zа-яё\s,]+$/i.test(secondPart))) {
-          s = parts[0].trim();
-        }
-      }
-    }
-
-    s = s.replace(/[\.,\-—\s]+$/, '');
+    s = s.replace(/\s*\(\s*(19\d\d|20\d\d)\s*\)/g, '');
     s = s.replace(/^["'«»“”„\s]+|["'«»“”„\s]+$/g, '').trim();
 
     return s;
@@ -261,59 +246,6 @@
     return '';
   }
 
-  function extractCardRuntime(link, isSeries) {
-    if (!link) return '';
-
-    if (isSeries) {
-      let parentCard = link.parentElement;
-      for (let i = 0; i < 4; i++) {
-        if (!parentCard) break;
-        const text = parentCard.innerText || '';
-
-        const seasonsMatch = text.match(/(\d+)\s*сезон/i);
-        if (seasonsMatch) {
-          const s = parseInt(seasonsMatch[1], 10);
-          if (!isNaN(s) && s > 0) {
-            let sWord = 'сезонов';
-            const mod100 = s % 100;
-            const mod10 = s % 10;
-            if (mod100 >= 11 && mod100 <= 19) sWord = 'сезонов';
-            else if (mod10 === 1) sWord = 'сезон';
-            else if (mod10 >= 2 && mod10 <= 4) sWord = 'сезона';
-            return `${s} ${sWord}`;
-          }
-        }
-
-        parentCard = parentCard.parentElement;
-      }
-      return '1 сезон';
-    }
-
-    // Movie Runtime
-    let parentCard = link.parentElement;
-    for (let i = 0; i < 4; i++) {
-      if (!parentCard) break;
-      const text = parentCard.innerText || '';
-
-      const minMatch = text.match(/(\d+)\s*мин/i);
-      if (minMatch) {
-        const m = parseInt(minMatch[1], 10);
-        if (!isNaN(m) && m > 0) {
-          if (m >= 60) {
-            const h = Math.floor(m / 60);
-            const rem = m % 60;
-            return rem > 0 ? `${h} ч ${rem} мин` : `${h} ч`;
-          }
-          return `${m} мин`;
-        }
-      }
-
-      parentCard = parentCard.parentElement;
-    }
-
-    return '';
-  }
-
   function parseRatingValue(rObj) {
     if (!rObj) return '';
     if (typeof rObj === 'number' || typeof rObj === 'string') {
@@ -371,37 +303,6 @@
     return '';
   }
 
-  function formatRuntimeText(durationMinutes, seasonsCount, isSeries) {
-    if (isSeries) {
-      let s = seasonsCount ? parseInt(seasonsCount, 10) : 1;
-      if (isNaN(s) || s < 1) s = 1;
-
-      let sWord = 'сезонов';
-      const mod100 = s % 100;
-      const mod10 = s % 10;
-      if (mod100 >= 11 && mod100 <= 19) sWord = 'сезонов';
-      else if (mod10 === 1) sWord = 'сезон';
-      else if (mod10 >= 2 && mod10 <= 4) sWord = 'сезона';
-      return `${s} ${sWord}`;
-    }
-
-    // Movie Runtime
-    if (durationMinutes) {
-      const m = parseInt(durationMinutes, 10);
-      if (!isNaN(m) && m > 0) {
-        if (m >= 60) {
-          const hours = Math.floor(m / 60);
-          const remMin = m % 60;
-          return remMin > 0 ? `${hours} ч ${remMin} мин` : `${hours} ч`;
-        } else {
-          return `${m} мин`;
-        }
-      }
-    }
-
-    return '';
-  }
-
   function scanPageNextDataCache() {
     const scriptEl = document.getElementById('__NEXT_DATA__');
     if (!scriptEl) return;
@@ -422,15 +323,6 @@
           const rating = parseRatingValue(obj.rating) || parseRatingValue(obj.userRating) || parseRatingValue(obj.ratingValue);
           const ratingImdb = deepFindImdbRating(obj);
 
-          const isSeries = (obj.type && String(obj.type).toUpperCase().includes('SERIES')) || obj.isSeries || obj.contentKind === 'SERIES' || Boolean(obj.seasonsCount || (Array.isArray(obj.seasons) && obj.seasons.length > 0));
-          const durationMinutes = obj.filmLength || obj.movieLength || obj.duration || obj.durationMinutes || obj.durationInMinutes || obj.runtime;
-
-          let seasonsCount = obj.seasonsCount || obj.totalSeasons || obj.seasonsInfo?.seasonsCount;
-          if (!seasonsCount && Array.isArray(obj.seasons)) {
-            seasonsCount = obj.seasons.length;
-          }
-
-          const runtimeText = formatRuntimeText(durationMinutes, seasonsCount, isSeries);
           const descToUse = rawShortDesc ? extractSmartSynopsis(rawShortDesc) : extractSmartSynopsis(rawSynopsis);
 
           descriptionCache[String(id)] = {
@@ -439,7 +331,7 @@
             year: year ? String(year) : '',
             rating,
             ratingImdb,
-            runtimeText,
+            runtimeText: '',
             description: descToUse
           };
         }
@@ -599,9 +491,8 @@
     }
 
     // Runtime / Seasons
-    const finalRuntime = data.runtimeText || extractCardRuntime(targetEl, isSeries);
-    if (runtimeEl && finalRuntime) {
-      runtimeEl.innerText = finalRuntime;
+    if (runtimeEl && data.runtimeText) {
+      runtimeEl.innerText = data.runtimeText;
       runtimeEl.style.display = 'block';
     } else if (runtimeEl) {
       runtimeEl.style.display = 'none';
@@ -645,23 +536,22 @@
       currentHoverFilmId = filmId;
       clearTimeout(hoverTimer);
 
-      const isCached = Boolean(descriptionCache[filmId]);
+      const isCached = Boolean(descriptionCache[filmId] && descriptionCache[filmId].runtimeText);
       const delayMs = isCached ? 20 : 120;
 
       const cardTitle = extractCardTitle(link);
       const cardRating = extractCardRating(link);
-      const cardRuntime = extractCardRuntime(link, isSeries);
 
       hoverTimer = setTimeout(() => {
         if (currentHoverFilmId !== filmId) return;
 
-        if (descriptionCache[filmId]) {
+        if (descriptionCache[filmId] && descriptionCache[filmId].runtimeText) {
           showTooltipData(descriptionCache[filmId], link, isSeries);
         } else {
           showTooltipData({
             title: cardTitle || 'Загрузка...',
             rating: cardRating,
-            runtimeText: cardRuntime,
+            runtimeText: '',
             description: ''
           }, link, isSeries);
 
@@ -675,9 +565,6 @@
               if (cardRating && !res.data.rating) {
                 res.data.rating = cardRating;
               }
-              if (cardRuntime && !res.data.runtimeText) {
-                res.data.runtimeText = cardRuntime;
-              }
               descriptionCache[filmId] = res.data;
               if (currentHoverFilmId === filmId) {
                 showTooltipData(res.data, link, isSeries);
@@ -687,7 +574,7 @@
                 showTooltipData({
                   title: cardTitle || 'Кинопоиск',
                   rating: cardRating,
-                  runtimeText: cardRuntime,
+                  runtimeText: '',
                   description: 'Описание отсутствует.'
                 }, link, isSeries);
               }
@@ -865,7 +752,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v98.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v101.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

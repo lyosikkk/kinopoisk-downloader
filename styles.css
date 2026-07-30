@@ -1,4 +1,4 @@
-/* Kinopoisk Light Button & Popup Styles v81.0 - Interactive Tooltip & HD Poster Fixes */
+/* Kinopoisk Light Button & Popup Styles v82.0 - Clean Title without Year & Rating Badge */
 
 .kp-dl-wrapper {
   position: relative !important;
@@ -353,7 +353,7 @@
   to { transform: rotate(360deg); }
 }
 
-/* Tooltip Popover Styles for Poster Hover v81.0 */
+/* Tooltip Popover Styles for Poster Hover v82.0 */
 
 .kp-dl-hover-tooltip {
   position: fixed !important;
@@ -389,7 +389,7 @@
   justify-content: space-between !important;
   align-items: flex-start !important;
   gap: 10px !important;
-  margin-bottom: 4px !important;
+  margin-bottom: 6px !important;
 }
 
 .kp-dl-tooltip-title {
@@ -409,18 +409,6 @@
   white-space: nowrap !important;
   display: inline-block !important;
   flex-shrink: 0 !important;
-}
-
-.kp-dl-tooltip-meta {
-  font-size: 12px !important;
-  color: #a0a0ab !important;
-  margin-bottom: 8px !important;
-  display: flex !important;
-  gap: 6px !important;
-}
-
-.kp-dl-tooltip-year {
-  font-weight: 600 !important;
 }
 
 .kp-dl-tooltip-slogan {

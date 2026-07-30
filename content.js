@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v81.0.0
- * Interactive Tooltip, UUID Links Support & Clean Loading Text
+ * Kinopoisk Downloader - Content Script v82.0.0
+ * Pure Title Formatting & No Year Metadata Node
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v81.0.0');
+  console.log('[Kinopoisk Downloader] Active v82.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -74,6 +74,8 @@
   function cleanTitleString(str) {
     if (!str) return '';
     return str
+      .replace(/,\s*(19\d\d|20\d\d)\b/gi, '')
+      .replace(/\(\s*(19\d\d|20\d\d)\s*\)/gi, '')
       .replace(/^["'«»“”„\s]+|["'«»“”„\s]+$/g, '')
       .replace(/&quot;/g, '')
       .replace(/&laquo;/g, '')
@@ -111,17 +113,17 @@
   function extractCardTitle(link) {
     if (!link) return '';
     const img = link.querySelector('img');
-    if (img && img.alt) return img.alt.trim();
+    if (img && img.alt) return cleanTitleString(img.alt);
 
     const titleAttr = link.getAttribute('title') || link.getAttribute('aria-label');
-    if (titleAttr) return titleAttr.trim();
+    if (titleAttr) return cleanTitleString(titleAttr);
 
     let parentCard = link.parentElement;
     for (let i = 0; i < 3; i++) {
       if (!parentCard) break;
       const titleEl = parentCard.querySelector('[class*="title"], [class*="name"], span, p');
       if (titleEl && titleEl.innerText && titleEl.innerText.length > 1) {
-        return titleEl.innerText.trim();
+        return cleanTitleString(titleEl.innerText);
       }
       parentCard = parentCard.parentElement;
     }
@@ -194,9 +196,6 @@
         <div class="kp-dl-tooltip-title"></div>
         <div class="kp-dl-tooltip-rating"></div>
       </div>
-      <div class="kp-dl-tooltip-meta">
-        <span class="kp-dl-tooltip-year"></span>
-      </div>
       <div class="kp-dl-tooltip-slogan"></div>
       <div class="kp-dl-tooltip-desc"></div>
     `;
@@ -249,7 +248,6 @@
     if (!tooltipEl) return;
     const titleEl = tooltipEl.querySelector('.kp-dl-tooltip-title');
     const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
-    const yearEl = tooltipEl.querySelector('.kp-dl-tooltip-year');
     const sloganEl = tooltipEl.querySelector('.kp-dl-tooltip-slogan');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
@@ -258,7 +256,6 @@
       ratingEl.innerText = '';
       ratingEl.style.display = 'none';
     }
-    if (yearEl) yearEl.innerText = '';
     if (sloganEl) {
       sloganEl.innerText = '';
       sloganEl.style.display = 'none';
@@ -283,7 +280,6 @@
 
     const titleEl = tooltipEl.querySelector('.kp-dl-tooltip-title');
     const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
-    const yearEl = tooltipEl.querySelector('.kp-dl-tooltip-year');
     const sloganEl = tooltipEl.querySelector('.kp-dl-tooltip-slogan');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
@@ -298,10 +294,6 @@
         else if (numRating >= 6.0) ratingEl.style.background = '#777777';
         else ratingEl.style.background = '#e65050';
       }
-    }
-
-    if (yearEl && data.year) {
-      yearEl.innerText = `${data.year} г.`;
     }
 
     if (sloganEl && data.slogan) {
@@ -553,7 +545,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v81.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v82.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

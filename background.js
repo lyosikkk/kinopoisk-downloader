@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v84.0.0
- * Pure Title Cleanser (Strips Genres & Year Suffixes) & Robust Rating Extractor
+ * Background Service Worker for Kinopoisk Downloader v85.0.0
+ * Strict Title Cleanser & Universal Rating Extractor
  */
 
 const globalDescriptionCache = {};
@@ -31,18 +31,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-const GENRE_WORDS_REGEX = /(драма|комедия|боевик|триллер|детектив|фантастика|фэнтези|ужасы|мелодрама|приключения|криминал|семейный|мультфильм|аниме|документальный|история|музыка|биография|вестерн|мюзикл|сериал|фильм)\b/i;
-
 function cleanTitleString(str) {
   if (!str) return '';
-  return str
-    .replace(/[\.,\(\s]+\b(19\d\d|20\d\d)\b[\s\S]*/gi, '')
-    .replace(/[\.,\/\(—\s]+(драма|комедия|боевик|триллер|детектив|фантастика|фэнтези|ужасы|мелодрама|приключения|криминал|семейный|мультфильм|аниме|документальный|история|музыка|биография|вестерн|мюзикл|сериал|фильм)\b[\s\S]*/gi, '')
-    .replace(/^["'«»“”„\s]+|["'«»“”„\s]+$/g, '')
-    .replace(/&quot;/g, '')
-    .replace(/&laquo;/g, '')
-    .replace(/&raquo;/g, '')
-    .trim();
+  let s = str.replace(/[\r\n\t]+/g, ' ').trim();
+  s = s.replace(/[\.,\(\s]+\b(19\d\d|20\d\d)\b[\s\S]*/gi, '');
+  s = s.replace(/[\.,\/\(—\s]+\b(драма|комедия|боевик|триллер|детектив|фантастика|фэнтези|ужасы|мелодрама|приключения|криминал|семейный|мультфильм|аниме|документальный|история|музыка|биография|вестерн|мюзикл|сериал|фильм)\b[\s\S]*/gi, '');
+  s = s.replace(/[\.,\-—\s]+$/, '');
+  s = s.replace(/^["'«»“”„\s]+|["'«»“”„\s]+$/g, '').trim();
+  return s;
 }
 
 function extractSmartSynopsis(fullText) {
@@ -79,7 +75,7 @@ function parseRatingValue(rObj) {
     if (!isNaN(num) && num > 0 && num <= 10) return num.toFixed(1);
   }
   if (typeof rObj === 'object') {
-    const candidate = rObj.kp || rObj.value || rObj.rating || rObj.ratingValue || rObj.filmCrypto?.rating;
+    const candidate = rObj.kp || rObj.value || rObj.rating || rObj.ratingValue || rObj.filmCrypto?.rating || rObj.percentage || rObj.user;
     if (candidate) {
       const num = parseFloat(candidate);
       if (!isNaN(num) && num > 0 && num <= 10) return num.toFixed(1);
@@ -282,7 +278,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v84.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v85.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -840,7 +836,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v84.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v85.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

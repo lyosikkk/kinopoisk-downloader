@@ -1,4 +1,4 @@
-/* Kinopoisk Light Button & Popup Styles v84.0 - No Slogans & Hidden Empty Badges */
+/* Kinopoisk Light Button & Popup Styles v85.0 - Strict Rating & Clean Title */
 
 .kp-dl-wrapper {
   position: relative !important;
@@ -353,7 +353,7 @@
   to { transform: rotate(360deg); }
 }
 
-/* Tooltip Popover Styles for Poster Hover v84.0 */
+/* Tooltip Popover Styles for Poster Hover v85.0 */
 
 .kp-dl-hover-tooltip {
   position: fixed !important;

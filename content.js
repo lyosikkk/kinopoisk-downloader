@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v84.0.0
- * Pure Title Cleanser, No Slogan, Strict Rating Display
+ * Kinopoisk Downloader - Content Script v85.0.0
+ * Pure Title Formatting & Guaranteed DOM Rating Fallback
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v84.0.0');
+  console.log('[Kinopoisk Downloader] Active v85.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -73,14 +73,12 @@
 
   function cleanTitleString(str) {
     if (!str) return '';
-    return str
-      .replace(/[\.,\(\s]+\b(19\d\d|20\d\d)\b[\s\S]*/gi, '')
-      .replace(/[\.,\/\(—\s]+(драма|комедия|боевик|триллер|детектив|фантастика|фэнтези|ужасы|мелодрама|приключения|криминал|семейный|мультфильм|аниме|документальный|история|музыка|биография|вестерн|мюзикл|сериал|фильм)\b[\s\S]*/gi, '')
-      .replace(/^["'«»“”„\s]+|["'«»“”„\s]+$/g, '')
-      .replace(/&quot;/g, '')
-      .replace(/&laquo;/g, '')
-      .replace(/&raquo;/g, '')
-      .trim();
+    let s = str.replace(/[\r\n\t]+/g, ' ').trim();
+    s = s.replace(/[\.,\(\s]+\b(19\d\d|20\d\d)\b[\s\S]*/gi, '');
+    s = s.replace(/[\.,\/\(—\s]+\b(драма|комедия|боевик|триллер|детектив|фантастика|фэнтези|ужасы|мелодрама|приключения|криминал|семейный|мультфильм|аниме|документальный|история|музыка|биография|вестерн|мюзикл|сериал|фильм)\b[\s\S]*/gi, '');
+    s = s.replace(/[\.,\-—\s]+$/, '');
+    s = s.replace(/^["'«»“”„\s]+|["'«»“”„\s]+$/g, '').trim();
+    return s;
   }
 
   function extractSmartSynopsis(fullText) {
@@ -128,6 +126,21 @@
       parentCard = parentCard.parentElement;
     }
 
+    return '';
+  }
+
+  function extractCardRating(link) {
+    if (!link) return '';
+    let parentCard = link.parentElement;
+    for (let i = 0; i < 4; i++) {
+      if (!parentCard) break;
+      const ratingEl = parentCard.querySelector('[class*="rating"], [class*="vote"], [class*="score"]');
+      if (ratingEl && ratingEl.innerText) {
+        const match = ratingEl.innerText.match(/\b([1-9]\.\d|10\.0|10)\b/);
+        if (match) return match[1];
+      }
+      parentCard = parentCard.parentElement;
+    }
     return '';
   }
 
@@ -287,8 +300,10 @@
 
     if (titleEl) titleEl.innerText = cleanTitleString(data.title) || 'Загрузка...';
 
-    if (ratingEl && data.rating) {
-      const numRating = parseFloat(data.rating);
+    const finalRating = data.rating || extractCardRating(targetEl);
+
+    if (ratingEl && finalRating) {
+      const numRating = parseFloat(finalRating);
       if (!isNaN(numRating) && numRating > 0) {
         ratingEl.innerText = numRating.toFixed(1);
         ratingEl.style.display = 'inline-block';
@@ -343,6 +358,7 @@
       const delayMs = isCached ? 20 : 120;
 
       const cardTitle = extractCardTitle(link);
+      const cardRating = extractCardRating(link);
 
       hoverTimer = setTimeout(() => {
         if (currentHoverFilmId !== filmId) return;
@@ -352,6 +368,7 @@
         } else {
           showTooltipData({
             title: cardTitle || 'Загрузка...',
+            rating: cardRating,
             description: ''
           }, link);
 
@@ -361,6 +378,9 @@
             cardTitle: cardTitle
           }, (res) => {
             if (res && res.success && res.data) {
+              if (cardRating && !res.data.rating) {
+                res.data.rating = cardRating;
+              }
               descriptionCache[filmId] = res.data;
               if (currentHoverFilmId === filmId) {
                 showTooltipData(res.data, link);
@@ -369,6 +389,7 @@
               if (currentHoverFilmId === filmId) {
                 showTooltipData({
                   title: cardTitle || 'Кинопоиск',
+                  rating: cardRating,
                   description: 'Описание отсутствует.'
                 }, link);
               }
@@ -546,7 +567,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v84.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v85.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

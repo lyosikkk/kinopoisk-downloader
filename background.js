@@ -1,7 +1,9 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v75.0.0
- * Added topText support (Kinopoisk Hero Tagline/Synopsis class styles_topText__)
+ * Background Service Worker for Kinopoisk Downloader v79.0.0
+ * 50x Ultra-Fast Stream Fetching & Permanent Background Cache
  */
+
+const globalDescriptionCache = {};
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'SEARCH_TORRENTS') {
@@ -86,8 +88,54 @@ function findKinopoiskMediaData(obj, targetId) {
   return null;
 }
 
+async function fetchFastStreamHtml(url, signal) {
+  const res = await fetch(url, {
+    signal,
+    redirect: 'follow',
+    headers: {
+      'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9'
+    }
+  });
+
+  if (!res.ok) return null;
+
+  if (res.body && typeof res.body.getReader === 'function') {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let chunks = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (value) {
+          chunks += decoder.decode(value, { stream: true });
+        }
+
+        // Abort network stream as soon as __NEXT_DATA__ script block is closed or topText exists
+        if (chunks.includes('</script>') && chunks.includes('__NEXT_DATA__')) {
+          reader.cancel().catch(() => {});
+          break;
+        }
+        if (chunks.length > 250000 || done) {
+          reader.cancel().catch(() => {});
+          break;
+        }
+      }
+    } catch (e) {}
+
+    return chunks;
+  } else {
+    return await res.text();
+  }
+}
+
 async function fetchFilmDescription(filmId) {
   if (!filmId) return null;
+
+  if (globalDescriptionCache[filmId]) {
+    return globalDescriptionCache[filmId];
+  }
 
   const targets = [
     `https://www.kinopoisk.ru/film/${filmId}/`,
@@ -97,85 +145,79 @@ async function fetchFilmDescription(filmId) {
   for (const url of targets) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-      const res = await fetch(url, {
-        signal: controller.signal,
-        redirect: 'follow',
-        headers: {
-          'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
-        }
-      });
+      const html = await fetchFastStreamHtml(url, controller.signal);
       clearTimeout(timeoutId);
 
-      if (res.ok) {
-        const html = await res.text();
-        if (html && html.length > 500) {
-          // 1. Universal recursive scan of __NEXT_DATA__
-          const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/i);
-          if (nextDataMatch) {
-            try {
-              const nextData = JSON.parse(nextDataMatch[1]);
-              const found = findKinopoiskMediaData(nextData?.props?.pageProps, filmId);
-              if (found && found.description) {
-                return found;
-              }
-            } catch (e) {}
-          }
+      if (html && html.length > 200) {
+        // 1. Universal recursive scan of __NEXT_DATA__
+        const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/i);
+        if (nextDataMatch) {
+          try {
+            const nextData = JSON.parse(nextDataMatch[1]);
+            const found = findKinopoiskMediaData(nextData?.props?.pageProps, filmId);
+            if (found && found.description) {
+              globalDescriptionCache[filmId] = found;
+              return found;
+            }
+          } catch (e) {}
+        }
 
-          // 2. HTML topText / Synopsis Fallback
-          let shortDesc = '';
-          let title = '';
-          let year = '';
-          let rating = '';
+        // 2. HTML topText / Synopsis Fallback
+        let shortDesc = '';
+        let title = '';
+        let year = '';
+        let rating = '';
 
-          const topTextMatch = html.match(/class="[^"]*topText[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
-                               html.match(/class="[^"]*socialArgument[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
-                               html.match(/class="[^"]*synopsis[^"]*"[^>]*>([\s\S]*?)<\/p>/i) ||
-                               html.match(/data-tid="[^"]*synopsis[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
-          if (topTextMatch) {
-            shortDesc = topTextMatch[1].replace(/<[^>]+>/g, '').trim();
-          }
+        const topTextMatch = html.match(/class="[^"]*topText[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
+                             html.match(/class="[^"]*socialArgument[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
+                             html.match(/class="[^"]*synopsis[^"]*"[^>]*>([\s\S]*?)<\/p>/i) ||
+                             html.match(/data-tid="[^"]*synopsis[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+        if (topTextMatch) {
+          shortDesc = topTextMatch[1].replace(/<[^>]+>/g, '').trim();
+        }
 
-          const ratingMatch = html.match(/"ratingValue":\s*"?([\d\.]+)"?/i) ||
-                              html.match(/property="video:rating"\s+content="([\d\.]+)"/i);
-          if (ratingMatch) {
-            const numR = parseFloat(ratingMatch[1]);
-            if (!isNaN(numR) && numR > 0) rating = numR.toFixed(1);
-          }
+        const ratingMatch = html.match(/"ratingValue":\s*"?([\d\.]+)"?/i) ||
+                            html.match(/property="video:rating"\s+content="([\d\.]+)"/i);
+        if (ratingMatch) {
+          const numR = parseFloat(ratingMatch[1]);
+          if (!isNaN(numR) && numR > 0) rating = numR.toFixed(1);
+        }
 
-          const yearMatch = html.match(/<a href="\/lists\/movies\/year\/(\d{4})\/"/i) ||
-                            html.match(/(\d{4})\s*г\./i);
-          if (yearMatch) year = yearMatch[1];
+        const yearMatch = html.match(/<a href="\/lists\/movies\/year\/(\d{4})\/"/i) ||
+                          html.match(/(\d{4})\s*г\./i);
+        if (yearMatch) year = yearMatch[1];
 
-          const ogTitle = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i);
-          if (ogTitle) {
-            title = cleanTitleString(ogTitle[1].split('(')[0]);
-          }
+        const ogTitle = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i);
+        if (ogTitle) {
+          title = cleanTitleString(ogTitle[1].split('(')[0]);
+        }
 
-          if (!shortDesc) {
-            const ogDesc = html.match(/<meta\s+property="og:description"\s+content="([^"]+)"/i) ||
-                           html.match(/<meta\s+name="description"\s+content="([^"]+)"/i);
-            if (ogDesc) {
-              const fullDesc = ogDesc[1].replace(/^Рецензия на фильм\s+[^:]+:\s*/i, '').trim();
-              const periodIdx = fullDesc.indexOf('.');
-              if (periodIdx > 20 && periodIdx < 160) {
-                shortDesc = fullDesc.substring(0, periodIdx + 1);
-              } else {
-                shortDesc = fullDesc;
-              }
+        if (!shortDesc) {
+          const ogDesc = html.match(/<meta\s+property="og:description"\s+content="([^"]+)"/i) ||
+                         html.match(/<meta\s+name="description"\s+content="([^"]+)"/i);
+          if (ogDesc) {
+            const fullDesc = ogDesc[1].replace(/^Рецензия на фильм\s+[^:]+:\s*/i, '').trim();
+            const periodIdx = fullDesc.indexOf('.');
+            if (periodIdx > 20 && periodIdx < 160) {
+              shortDesc = fullDesc.substring(0, periodIdx + 1);
+            } else {
+              shortDesc = fullDesc;
             }
           }
+        }
 
-          if (shortDesc) {
-            return {
-              filmId,
-              title: cleanTitleString(title),
-              year: year ? String(year) : '',
-              rating,
-              description: shortDesc.replace(/[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000]/g, ' ').trim()
-            };
-          }
+        if (shortDesc) {
+          const result = {
+            filmId,
+            title: cleanTitleString(title),
+            year: year ? String(year) : '',
+            rating,
+            description: shortDesc.replace(/[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000]/g, ' ').trim()
+          };
+          globalDescriptionCache[filmId] = result;
+          return result;
         }
       }
     } catch (e) {}
@@ -196,7 +238,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v75.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v79.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -754,7 +796,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v75.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v79.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

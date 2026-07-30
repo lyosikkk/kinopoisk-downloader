@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v78.0.0
- * Disabled Hover Tooltips on Big Promo/Hero Banners
+ * Kinopoisk Downloader - Content Script v79.0.0
+ * Strict Tooltip State Reset & Instant Render
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v78.0.0');
+  console.log('[Kinopoisk Downloader] Active v79.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -30,7 +30,6 @@
   function isPromoBannerLink(link) {
     const href = link.getAttribute('href') || '';
 
-    // 1. URL params check for Kinopoisk main page promo/hero banners
     if (
       href.includes('from_block=trailer_promo') ||
       href.includes('from_block=promo') ||
@@ -41,7 +40,6 @@
       return true;
     }
 
-    // 2. DOM tree check for promo/hero/billboard containers that already display description text
     let parent = link.parentElement;
     for (let i = 0; i < 5; i++) {
       if (!parent || parent.tagName === 'BODY') break;
@@ -176,44 +174,62 @@
     tooltipEl.style.top = `${top}px`;
   }
 
+  function resetTooltipDOM() {
+    if (!tooltipEl) return;
+    const titleEl = tooltipEl.querySelector('.kp-dl-tooltip-title');
+    const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
+    const yearEl = tooltipEl.querySelector('.kp-dl-tooltip-year');
+    const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
+
+    if (titleEl) titleEl.innerText = '';
+    if (ratingEl) {
+      ratingEl.innerText = '';
+      ratingEl.style.display = 'none';
+    }
+    if (yearEl) yearEl.innerText = '';
+    if (descEl) descEl.innerText = '';
+  }
+
   function hideTooltip() {
     if (hoverTimer) clearTimeout(hoverTimer);
     currentHoverFilmId = null;
     if (tooltipEl) {
       tooltipEl.classList.remove('visible');
+      resetTooltipDOM();
     }
   }
 
   function showTooltipData(data, targetEl) {
     if (!tooltipEl || !data) return;
 
+    // STRICTLY CLEAR OLD STATE FIRST
+    resetTooltipDOM();
+
     const titleEl = tooltipEl.querySelector('.kp-dl-tooltip-title');
     const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
     const yearEl = tooltipEl.querySelector('.kp-dl-tooltip-year');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
-    if (titleEl) titleEl.innerText = cleanTitleString(data.title) || 'Без названия';
+    if (titleEl) titleEl.innerText = cleanTitleString(data.title) || 'Загрузка...';
 
-    if (ratingEl) {
-      if (data.rating) {
-        const numRating = parseFloat(data.rating);
-        if (!isNaN(numRating) && numRating > 0) {
-          const roundedRating = numRating.toFixed(1);
-          ratingEl.innerText = roundedRating;
-          ratingEl.style.display = 'inline-block';
-          if (numRating >= 7.5) ratingEl.style.background = '#3bb33b';
-          else if (numRating >= 6.0) ratingEl.style.background = '#777777';
-          else ratingEl.style.background = '#e65050';
-        } else {
-          ratingEl.style.display = 'none';
-        }
-      } else {
-        ratingEl.style.display = 'none';
+    if (ratingEl && data.rating) {
+      const numRating = parseFloat(data.rating);
+      if (!isNaN(numRating) && numRating > 0) {
+        ratingEl.innerText = numRating.toFixed(1);
+        ratingEl.style.display = 'inline-block';
+        if (numRating >= 7.5) ratingEl.style.background = '#3bb33b';
+        else if (numRating >= 6.0) ratingEl.style.background = '#777777';
+        else ratingEl.style.background = '#e65050';
       }
     }
 
-    if (yearEl) yearEl.innerText = data.year ? `${data.year} г.` : '';
-    if (descEl) descEl.innerText = data.description || 'Краткое описание отсутствует.';
+    if (yearEl && data.year) {
+      yearEl.innerText = `${data.year} г.`;
+    }
+
+    if (descEl) {
+      descEl.innerText = data.description || 'Краткое описание отсутствует.';
+    }
 
     positionTooltip(targetEl);
     tooltipEl.classList.add('visible');
@@ -230,7 +246,6 @@
       const link = e.target.closest('a[href*="/film/"], a[href*="/series/"]');
       if (!link) return;
 
-      // 1. Exclude promo/hero banners that already display full description & buttons
       if (isPromoBannerLink(link)) {
         return;
       }
@@ -241,7 +256,6 @@
 
       const filmId = match[2];
 
-      // 2. Exclude the film/series currently being viewed
       if (currentPageFilmId && filmId === currentPageFilmId) {
         return;
       }
@@ -250,7 +264,7 @@
       clearTimeout(hoverTimer);
 
       const isCached = Boolean(descriptionCache[filmId]);
-      const delayMs = isCached ? 50 : 180;
+      const delayMs = isCached ? 20 : 120;
 
       hoverTimer = setTimeout(() => {
         if (currentHoverFilmId !== filmId) return;
@@ -446,7 +460,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v78.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v79.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Kinopoisk Downloader",
-  "version": "1.0.0",
-  "description": "Быстрое и удобное скачивание фильмов прямо со страницы Кинопоиска.",
+  "version": "1.1.0",
+  "description": "Быстрое и удобное скачивание фильмов прямо со страницы Кинопоиска, а также предпросмотр описания при наведении.",
   "permissions": [
     "activeTab",
     "scripting",
@@ -29,8 +29,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.kinopoisk.ru/film/*",
-        "https://www.kinopoisk.ru/series/*"
+        "https://www.kinopoisk.ru/*"
       ],
       "css": [
         "styles.css"

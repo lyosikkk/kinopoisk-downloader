@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v71.0.0
- * Fixed Over-aggressive TV Series Detection ('ИЗ ' false positive)
+ * Background Service Worker for Kinopoisk Downloader v72.0.0
+ * Added Film Description Fetcher for Poster Hover Tooltips
  */
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -20,7 +20,99 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch((err) => sendResponse({ success: false, error: err.message }));
     return true;
   }
+
+  if (request.action === 'FETCH_FILM_DESCRIPTION') {
+    fetchFilmDescription(request.filmId)
+      .then(data => sendResponse({ success: Boolean(data), data }))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
 });
+
+async function fetchFilmDescription(filmId) {
+  if (!filmId) return null;
+
+  const targets = [
+    `https://www.kinopoisk.ru/film/${filmId}/`,
+    `https://www.kinopoisk.ru/series/${filmId}/`
+  ];
+
+  for (const url of targets) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
+        }
+      });
+      if (res.ok) {
+        const html = await res.text();
+        if (html && html.length > 500) {
+          let description = '';
+          let title = '';
+          let year = '';
+          let rating = '';
+          let genre = '';
+
+          const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi);
+          if (jsonLdMatch) {
+            for (const scriptTag of jsonLdMatch) {
+              try {
+                const jsonText = scriptTag.replace(/<[^>]+>/g, '');
+                const data = JSON.parse(jsonText);
+                const item = Array.isArray(data) ? data.find(i => i['@type'] === 'Movie' || i['@type'] === 'TVSeries') : data;
+                if (item) {
+                  if (item.description) description = item.description;
+                  if (item.name) title = item.name;
+                  if (item.dateCreated) year = item.dateCreated.substring(0, 4);
+                  else if (item.releaseDate) year = item.releaseDate.substring(0, 4);
+                  else if (item.startDate) year = item.startDate.substring(0, 4);
+                  if (item.aggregateRating && item.aggregateRating.ratingValue) {
+                    rating = String(item.aggregateRating.ratingValue);
+                  }
+                  if (item.genre) {
+                    genre = Array.isArray(item.genre) ? item.genre.join(', ') : String(item.genre);
+                  }
+                }
+              } catch (e) {}
+            }
+          }
+
+          if (!description) {
+            const ogDesc = html.match(/<meta\s+property="og:description"\s+content="([^"]+)"/i) ||
+                           html.match(/<meta\s+name="description"\s+content="([^"]+)"/i);
+            if (ogDesc) {
+              description = ogDesc[1];
+            }
+          }
+
+          if (!title) {
+            const ogTitle = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i);
+            if (ogTitle) title = ogTitle[1];
+          }
+
+          if (description) {
+            description = description
+              .replace(/^Рецензия на фильм\s+[^:]+:\s*/i, '')
+              .replace(/^Информация о фильме\s+[^:]+:\s*/i, '')
+              .replace(/[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000]/g, ' ')
+              .trim();
+
+            return {
+              filmId,
+              title,
+              year,
+              rating,
+              genre,
+              description
+            };
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  return null;
+}
 
 function arrayBufferToBase64(buffer) {
   let binary = '';
@@ -34,7 +126,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v71.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v72.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -235,7 +327,6 @@ function isJunk(title) {
   return UNIVERSAL_JUNK_KEYWORDS.some(word => upper.includes(word));
 }
 
-// Точное разграничение типа контента (фильм / сериал)
 function isMediaTypeMatching(torrentTitle, seasonData, episodeData, isSeriesOnPage) {
   const isTorrentSeries = Boolean(
     seasonData || 
@@ -261,7 +352,6 @@ function isMediaTypeMatching(torrentTitle, seasonData, episodeData, isSeriesOnPa
       return false;
     }
   } else {
-    // На странице ФИЛЬМА отбрасываются только явные сериальные раздачи
     if (isTorrentSeries) {
       return false;
     }
@@ -594,7 +684,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v71.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v72.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

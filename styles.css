@@ -1,4 +1,4 @@
-/* Kinopoisk Light Button & Popup Styles v60.0 - 2nd Line Placement */
+/* Kinopoisk Light Button & Popup Styles v72.0 - 2nd Line Placement & Poster Hover Tooltips */
 
 .kp-dl-wrapper {
   position: relative !important;
@@ -351,4 +351,89 @@
 
 @keyframes kpDlSpin {
   to { transform: rotate(360deg); }
+}
+
+/* Tooltip Popover Styles for Poster Hover v72.0 */
+
+.kp-dl-hover-tooltip {
+  position: fixed !important;
+  z-index: 999999 !important;
+  width: 320px !important;
+  max-width: calc(100vw - 32px) !important;
+  background: rgba(20, 20, 24, 0.95) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 14px !important;
+  padding: 14px 16px !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  transform: translateY(6px) scale(0.98) !important;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  box-sizing: border-box !important;
+  visibility: hidden !important;
+}
+
+.kp-dl-hover-tooltip.visible {
+  opacity: 1 !important;
+  transform: translateY(0) scale(1) !important;
+  visibility: visible !important;
+}
+
+.kp-dl-tooltip-header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: flex-start !important;
+  gap: 10px !important;
+  margin-bottom: 4px !important;
+}
+
+.kp-dl-tooltip-title {
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  color: #ffffff !important;
+  line-height: 1.3 !important;
+}
+
+.kp-dl-tooltip-rating {
+  background: #3bb33b !important;
+  color: #ffffff !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  padding: 2px 6px !important;
+  border-radius: 6px !important;
+  white-space: nowrap !important;
+  display: inline-block !important;
+  flex-shrink: 0 !important;
+}
+
+.kp-dl-tooltip-meta {
+  font-size: 12px !important;
+  color: #a0a0ab !important;
+  margin-bottom: 10px !important;
+  display: flex !important;
+  gap: 6px !important;
+  flex-wrap: wrap !important;
+}
+
+.kp-dl-tooltip-year {
+  font-weight: 600 !important;
+}
+
+.kp-dl-tooltip-genre {
+  color: #8c8c99 !important;
+}
+
+.kp-dl-tooltip-desc {
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+  color: #d1d1d6 !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 7 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
 }

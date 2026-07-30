@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v101.0.0
- * Poster Tooltip IMDb Badges + Side-by-Side Main Page IMDb Badge Injector
+ * Kinopoisk Downloader - Content Script v102.0.0
+ * Pure Title Filter (Removes Year & Genre from Tooltip Header)
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v101.0.0');
+  console.log('[Kinopoisk Downloader] Active v102.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -60,6 +60,22 @@
     }
 
     return false;
+  }
+
+  function cleanTitleString(str) {
+    if (!str) return '';
+
+    let s = String(str).replace(/[\r\n\t]+/g, ' ').trim();
+    if (/^[1-9]\.\d$/.test(s)) return '';
+
+    s = s.replace(/^[1-9]\.\d\s+/, '').replace(/\s+[1-9]\.\d$/, '');
+    
+    // Strip year and everything after it (e.g. ". 1974, драма", ", 1994, криминал", " (1994)")
+    s = s.replace(/[\.,\s]+\b(19\d\d|20\d\d)\b[\s\S]*/gi, '');
+
+    s = s.replace(/^["'«»“”„\s\.,\-—]+|["'«»“”„\s\.,\-—]+$/g, '').trim();
+
+    return s;
   }
 
   // --- Main Film/Series Page IMDb Badge Injector ---
@@ -140,19 +156,6 @@
   let isMouseOverLink = false;
 
   const descriptionCache = {};
-
-  function cleanTitleString(str) {
-    if (!str) return '';
-
-    let s = String(str).replace(/[\r\n\t]+/g, ' ').trim();
-    if (/^[1-9]\.\d$/.test(s)) return '';
-
-    s = s.replace(/^[1-9]\.\d\s+/, '').replace(/\s+[1-9]\.\d$/, '');
-    s = s.replace(/\s*\(\s*(19\d\d|20\d\d)\s*\)/g, '');
-    s = s.replace(/^["'«»“”„\s]+|["'«»“”„\s]+$/g, '').trim();
-
-    return s;
-  }
 
   function extractSmartSynopsis(fullText) {
     if (!fullText) return '';
@@ -752,7 +755,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v101.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v102.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

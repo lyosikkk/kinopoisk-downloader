@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v75.0.0
- * Instant Local SSR Cache Scanner with topText priority
+ * Kinopoisk Downloader - Content Script v76.0.0
+ * Disabled Hover Tooltips for the Current Film/Series Page Itself
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v75.0.0');
+  console.log('[Kinopoisk Downloader] Active v76.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -183,6 +183,10 @@
     createTooltipElement();
 
     document.addEventListener('mouseover', (e) => {
+      // Determine if current page itself is a film/series page
+      const currentUrlMatch = location.pathname.match(/\/(film|series)\/(\d+)/);
+      const currentPageFilmId = currentUrlMatch ? currentUrlMatch[2] : null;
+
       const link = e.target.closest('a[href*="/film/"], a[href*="/series/"]');
       if (!link) return;
 
@@ -192,9 +196,9 @@
 
       const filmId = match[2];
 
-      if (location.pathname.includes(`/film/${filmId}/`) || location.pathname.includes(`/series/${filmId}/`)) {
-        const h1 = document.querySelector('h1');
-        if (h1 && h1.parentElement && h1.parentElement.contains(link)) return;
+      // Never show hover tooltip for the film/series of the page user is currently viewing
+      if (currentPageFilmId && filmId === currentPageFilmId) {
+        return;
       }
 
       currentHoverFilmId = filmId;
@@ -397,7 +401,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v75.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v76.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

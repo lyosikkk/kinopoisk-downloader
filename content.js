@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v102.0.0
- * Pure Title Filter (Removes Year & Genre from Tooltip Header)
+ * Kinopoisk Downloader - Content Script v104.0.0
+ * Poster Tooltip IMDb Badges + Side-by-Side Main Page IMDb Badge Injector
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v102.0.0');
+  console.log('[Kinopoisk Downloader] Active v104.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -69,10 +69,7 @@
     if (/^[1-9]\.\d$/.test(s)) return '';
 
     s = s.replace(/^[1-9]\.\d\s+/, '').replace(/\s+[1-9]\.\d$/, '');
-    
-    // Strip year and everything after it (e.g. ". 1974, драма", ", 1994, криминал", " (1994)")
     s = s.replace(/[\.,\s]+\b(19\d\d|20\d\d)\b[\s\S]*/gi, '');
-
     s = s.replace(/^["'«»“”„\s\.,\-—]+|["'«»“”„\s\.,\-—]+$/g, '').trim();
 
     return s;
@@ -93,14 +90,12 @@
 
     const candidates = Array.from(document.querySelectorAll('[class*="rating"], [class*="score"], [class*="vote"], a[href*="votes"], span, div'));
     for (const el of candidates) {
-      if (el.children.length === 0) {
-        const text = (el.innerText || el.textContent || '').trim();
-        if (/^[1-9]\.\d$/.test(text)) {
-          const rect = el.getBoundingClientRect();
-          if (rect.top > 0 && rect.top < 600 && rect.left > window.innerWidth * 0.35) {
-            scoreEl = el;
-            break;
-          }
+      const text = (el.innerText || el.textContent || '').trim();
+      if (/^[1-9]\.\d$/.test(text) && text.length <= 4) {
+        const rect = el.getBoundingClientRect();
+        if (rect.top > 0 && rect.top < 600 && rect.left > window.innerWidth * 0.3) {
+          scoreEl = el;
+          break;
         }
       }
     }
@@ -539,7 +534,7 @@
       currentHoverFilmId = filmId;
       clearTimeout(hoverTimer);
 
-      const isCached = Boolean(descriptionCache[filmId] && descriptionCache[filmId].runtimeText);
+      const isCached = Boolean(descriptionCache[filmId] && descriptionCache[filmId].ratingImdb);
       const delayMs = isCached ? 20 : 120;
 
       const cardTitle = extractCardTitle(link);
@@ -548,7 +543,7 @@
       hoverTimer = setTimeout(() => {
         if (currentHoverFilmId !== filmId) return;
 
-        if (descriptionCache[filmId] && descriptionCache[filmId].runtimeText) {
+        if (descriptionCache[filmId] && descriptionCache[filmId].ratingImdb) {
           showTooltipData(descriptionCache[filmId], link, isSeries);
         } else {
           showTooltipData({
@@ -755,7 +750,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v102.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v104.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

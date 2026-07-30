@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v103.0.0
- * High-Speed Streaming HTML Engine + Non-Blocking Parallel IMDb Fetcher (<100ms response)
+ * Background Service Worker for Kinopoisk Downloader v104.0.0
+ * Guaranteed Synchronous IMDb Live Rating Extractor & Universal Page Cache
  */
 
 const globalDescriptionCache = {};
@@ -160,7 +160,7 @@ function getExactKinopoiskRuntimeFromHtml(html) {
   return '';
 }
 
-// Fast IMDb rating fetch with strict timeout
+// Guaranteed IMDb live rating fetcher
 async function fetchTrueImdbRating(imdbId, origTitle = '', cardTitle = '', year = '', fallbackImdb = '') {
   let targetId = imdbId;
 
@@ -180,7 +180,7 @@ async function fetchTrueImdbRating(imdbId, origTitle = '', cardTitle = '', year 
           const sugUrl = `https://v3.sg.media-imdb.com/suggestion/${firstChar}/${encodeURIComponent(q)}.json`;
           
           const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 1000);
+          const timer = setTimeout(() => controller.abort(), 1500);
           
           const sugRes = await fetch(sugUrl, { signal: controller.signal });
           clearTimeout(timer);
@@ -208,7 +208,7 @@ async function fetchTrueImdbRating(imdbId, origTitle = '', cardTitle = '', year 
     try {
       const imdbUrl = `https://www.imdb.com/title/${targetId}/`;
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 1200);
+      const timer = setTimeout(() => controller.abort(), 1800);
 
       const res = await fetch(imdbUrl, {
         signal: controller.signal,
@@ -389,8 +389,7 @@ function findKinopoiskMediaData(obj, targetId, targetTitle = '', hintIsSeries = 
   return null;
 }
 
-// Fast Stream Reader: Cancels stream as soon as metadata is collected
-async function fetchFastStreamHtml(url, signal) {
+async function fetchFullHtmlStream(url, signal) {
   const res = await fetch(url, {
     signal,
     redirect: 'follow',
@@ -401,36 +400,7 @@ async function fetchFastStreamHtml(url, signal) {
   });
 
   if (!res.ok) return null;
-
-  if (res.body && typeof res.body.getReader === 'function') {
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let chunks = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (value) {
-          chunks += decoder.decode(value, { stream: true });
-        }
-
-        // Cancel stream as soon as NEXT_DATA & Время are received!
-        if (chunks.includes('__NEXT_DATA__') && chunks.includes('</script>') && (chunks.includes('Время') || chunks.includes('duration'))) {
-          reader.cancel().catch(() => {});
-          break;
-        }
-
-        if (chunks.length > 250000 || done) {
-          reader.cancel().catch(() => {});
-          break;
-        }
-      }
-    } catch (e) {}
-
-    return chunks;
-  } else {
-    return await res.text();
-  }
+  return await res.text();
 }
 
 async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false) {
@@ -446,9 +416,9 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
 
-    const html = await fetchFastStreamHtml(targetUrl, controller.signal);
+    const html = await fetchFullHtmlStream(targetUrl, controller.signal);
     clearTimeout(timeoutId);
 
     if (html && html.length > 200) {
@@ -488,18 +458,13 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
 
       const runtimeText = formatRuntimeText(exactHtmlRuntime, seasonsCount, hintIsSeries || Boolean(seasonsCount));
 
-      // Fast non-blocking IMDb rating resolution
-      let liveImdbRating = fallbackImdb ? parseRatingValue(fallbackImdb) : '';
-
-      fetchTrueImdbRating(imdbId, origTitle, cardTitle, found?.year, fallbackImdb).then(rating => {
-        if (rating && globalDescriptionCache[safeFilmId]) {
-          globalDescriptionCache[safeFilmId].ratingImdb = rating;
-        }
-      }).catch(() => {});
+      // SYNCHRONOUSLY await true IMDb rating
+      const liveImdbRating = await fetchTrueImdbRating(imdbId, origTitle, cardTitle, found?.year, fallbackImdb);
+      const finalImdbRating = liveImdbRating || parseRatingValue(fallbackImdb);
 
       if (found) {
         found.filmId = safeFilmId;
-        found.ratingImdb = liveImdbRating;
+        found.ratingImdb = finalImdbRating;
         if (runtimeText) {
           found.runtimeText = runtimeText;
         }
@@ -552,7 +517,7 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
           title: title || 'Кинопоиск',
           year: year ? String(year) : '',
           rating,
-          ratingImdb: liveImdbRating,
+          ratingImdb: finalImdbRating,
           runtimeText: runtimeText || '',
           description: shortDesc || 'Описание отсутствует.'
         };
@@ -577,7 +542,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v103.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v104.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -1135,7 +1100,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v103.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v104.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

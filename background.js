@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v82.0.0
- * Strict Title Cleaning (Year & Quotes Stripped)
+ * Background Service Worker for Kinopoisk Downloader v83.0.0
+ * Pure Title String Cleanser - Strips Year and Genre Suffixes (. 2026, драма)
  */
 
 const globalDescriptionCache = {};
@@ -34,8 +34,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 function cleanTitleString(str) {
   if (!str) return '';
   return str
-    .replace(/,\s*(19\d\d|20\d\d)\b/gi, '')
-    .replace(/\(\s*(19\d\d|20\d\d)\s*\)/gi, '')
+    .replace(/[\.,\(\s]+\b(19\d\d|20\d\d)\b[\s\S]*/gi, '')
     .replace(/^["'«»“”„\s]+|["'«»“”„\s]+$/g, '')
     .replace(/&quot;/g, '')
     .replace(/&laquo;/g, '')
@@ -278,7 +277,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v82.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v83.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -836,7 +835,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v82.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v83.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

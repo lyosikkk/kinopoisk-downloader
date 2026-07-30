@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v82.0.0
- * Pure Title Formatting & No Year Metadata Node
+ * Kinopoisk Downloader - Content Script v83.0.0
+ * Pure Title Cleanser - Removes Year & Genre Suffixes (. 2026, драма)
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v82.0.0');
+  console.log('[Kinopoisk Downloader] Active v83.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -74,8 +74,7 @@
   function cleanTitleString(str) {
     if (!str) return '';
     return str
-      .replace(/,\s*(19\d\d|20\d\d)\b/gi, '')
-      .replace(/\(\s*(19\d\d|20\d\d)\s*\)/gi, '')
+      .replace(/[\.,\(\s]+\b(19\d\d|20\d\d)\b[\s\S]*/gi, '')
       .replace(/^["'«»“”„\s]+|["'«»“”„\s]+$/g, '')
       .replace(/&quot;/g, '')
       .replace(/&laquo;/g, '')
@@ -545,7 +544,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v82.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v83.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v95.0.0
- * Live IMDb Rating Fetcher (Direct from IMDb.com) & Accurate Media Tooltip
+ * Background Service Worker for Kinopoisk Downloader v96.0.0
+ * Universal IMDb Live Rating Fetcher (Direct IMDb.com + Suggestion API + Fallback Cache)
  */
 
 const globalDescriptionCache = {};
@@ -100,66 +100,74 @@ function parseRatingValue(rObj) {
   return '';
 }
 
-// Fetch Live True Rating Directly from IMDb.com
-async function fetchTrueImdbRating(imdbId, origTitle = '', year = '') {
+// Fetch Live True Rating Directly from IMDb.com with universal query search
+async function fetchTrueImdbRating(imdbId, origTitle = '', cardTitle = '', fallbackImdb = '') {
   let targetId = imdbId;
 
-  if (!targetId && origTitle) {
+  // 1. Try resolving tt ID via IMDb Suggestion API if imdbId is missing
+  if (!targetId) {
+    const searchQueries = [origTitle, cardTitle].filter(Boolean);
+
+    for (const rawQ of searchQueries) {
+      if (targetId) break;
+      try {
+        const q = rawQ.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+        if (q && q.length >= 2) {
+          const firstChar = q.charAt(0);
+          const sugUrl = `https://v3.sg.media-imdb.com/suggestion/${firstChar}/${encodeURIComponent(q)}.json`;
+          const sugRes = await fetch(sugUrl);
+          if (sugRes.ok) {
+            const sugData = await sugRes.json();
+            if (sugData && Array.isArray(sugData.d) && sugData.d.length > 0) {
+              const match = sugData.d.find(item => item.id && item.id.startsWith('tt'));
+              if (match) targetId = match.id;
+            }
+          }
+        }
+      } catch (e) {}
+    }
+  }
+
+  // 2. Direct fetch of official IMDb title page
+  if (targetId) {
     try {
-      const q = origTitle.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
-      if (q) {
-        const firstChar = q.charAt(0);
-        const sugUrl = `https://v3.sg.media-imdb.com/suggestion/${firstChar}/${encodeURIComponent(q)}.json`;
-        const sugRes = await fetch(sugUrl);
-        if (sugRes.ok) {
-          const sugData = await sugRes.json();
-          if (sugData && Array.isArray(sugData.d) && sugData.d.length > 0) {
-            const match = sugData.d.find(item => item.id && item.id.startsWith('tt'));
-            if (match) targetId = match.id;
+      const imdbUrl = `https://www.imdb.com/title/${targetId}/`;
+      const res = await fetch(imdbUrl, {
+        headers: {
+          'Accept-Language': 'en-US,en;q=0.9',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+
+      if (res.ok) {
+        const html = await res.text();
+        const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/i);
+        if (jsonLdMatch) {
+          try {
+            const ldData = JSON.parse(jsonLdMatch[1]);
+            const ratingVal = ldData?.aggregateRating?.ratingValue;
+            if (ratingVal) {
+              const num = parseFloat(ratingVal);
+              if (!isNaN(num) && num > 0 && num <= 10) {
+                return num.toFixed(1);
+              }
+            }
+          } catch (e) {}
+        }
+
+        const ratingMatch = html.match(/"ratingValue":\s*"?([\d\.]+)"?/i) || html.match(/aggregateRating[\s\S]{1,100}?([\d\.]+)/i);
+        if (ratingMatch) {
+          const num = parseFloat(ratingMatch[1]);
+          if (!isNaN(num) && num > 0 && num <= 10) {
+            return num.toFixed(1);
           }
         }
       }
     } catch (e) {}
   }
 
-  if (!targetId) return '';
-
-  try {
-    const imdbUrl = `https://www.imdb.com/title/${targetId}/`;
-    const res = await fetch(imdbUrl, {
-      headers: {
-        'Accept-Language': 'en-US,en;q=0.9',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
-    });
-
-    if (res.ok) {
-      const html = await res.text();
-      const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/i);
-      if (jsonLdMatch) {
-        try {
-          const ldData = JSON.parse(jsonLdMatch[1]);
-          const ratingVal = ldData?.aggregateRating?.ratingValue;
-          if (ratingVal) {
-            const num = parseFloat(ratingVal);
-            if (!isNaN(num) && num > 0 && num <= 10) {
-              return num.toFixed(1);
-            }
-          }
-        } catch (e) {}
-      }
-
-      const ratingMatch = html.match(/"ratingValue":\s*"?([\d\.]+)"?/i) || html.match(/aggregateRating[\s\S]{1,100}?([\d\.]+)/i);
-      if (ratingMatch) {
-        const num = parseFloat(ratingMatch[1]);
-        if (!isNaN(num) && num > 0 && num <= 10) {
-          return num.toFixed(1);
-        }
-      }
-    }
-  } catch (e) {}
-
-  return '';
+  // 3. Fallback to Kinopoisk internal rating if direct fetch fails
+  return fallbackImdb ? parseRatingValue(fallbackImdb) : '';
 }
 
 function deepFindImdbId(obj) {
@@ -172,6 +180,28 @@ function deepFindImdbId(obj) {
   for (const k of Object.keys(obj)) {
     if (k.toLowerCase().includes('imdb') && typeof obj[k] === 'string' && obj[k].startsWith('tt')) {
       return obj[k];
+    }
+  }
+
+  return '';
+}
+
+function deepFindFallbackImdbRating(obj) {
+  if (!obj || typeof obj !== 'object') return '';
+
+  if (obj.imdb) {
+    const parsed = parseRatingValue(obj.imdb);
+    if (parsed) return parsed;
+  }
+  if (obj.imdbRating) {
+    const parsed = parseRatingValue(obj.imdbRating);
+    if (parsed) return parsed;
+  }
+
+  for (const k of Object.keys(obj)) {
+    if (k.toLowerCase().includes('imdb')) {
+      const val = parseRatingValue(obj[k]);
+      if (val) return val;
     }
   }
 
@@ -239,6 +269,7 @@ function findKinopoiskMediaData(obj, targetId, targetTitle = '', hintIsSeries = 
       const rating = parseRatingValue(obj.rating) || parseRatingValue(obj.userRating) || parseRatingValue(obj.ratingValue);
       
       const imdbId = deepFindImdbId(obj);
+      const fallbackImdb = deepFindFallbackImdbRating(obj);
       const durationMinutes = obj.filmLength || obj.movieLength || obj.duration || obj.durationMinutes || obj.durationInMinutes || obj.runtime;
 
       let seasonsCount = obj.seasonsCount || obj.totalSeasons || obj.seasonsInfo?.seasonsCount;
@@ -253,6 +284,7 @@ function findKinopoiskMediaData(obj, targetId, targetTitle = '', hintIsSeries = 
         return {
           filmId: targetId,
           imdbId,
+          fallbackImdb,
           origTitle,
           title: cleanRawTitle,
           year: year ? String(year) : '',
@@ -350,9 +382,13 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
       if (html && html.length > 200) {
         let found = null;
         let imdbId = '';
+        let fallbackImdb = '';
 
         const ttMatch = html.match(/tt\d{7,8}/i);
         if (ttMatch) imdbId = ttMatch[0];
+
+        const kpImdbMatch = html.match(/IMDb:\s*([\d\.]+)/i) || html.match(/"imdb":\s*([\d\.]+)/i) || html.match(/"ratingImdb":\s*"?([\d\.]+)"?/i);
+        if (kpImdbMatch) fallbackImdb = kpImdbMatch[1];
 
         const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/i);
         if (nextDataMatch) {
@@ -360,6 +396,7 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
             const nextData = JSON.parse(nextDataMatch[1]);
             found = findKinopoiskMediaData(nextData?.props?.pageProps, filmId, cardTitle, hintIsSeries);
             if (found && found.imdbId) imdbId = found.imdbId;
+            if (found && found.fallbackImdb) fallbackImdb = found.fallbackImdb;
           } catch (e) {}
         }
 
@@ -370,10 +407,10 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
         }
 
         // Fetch Live True IMDb Rating directly from IMDb.com!
-        const liveImdbRating = await fetchTrueImdbRating(imdbId, origTitle || cardTitle, found?.year);
+        const liveImdbRating = await fetchTrueImdbRating(imdbId, origTitle || cardTitle, cardTitle, fallbackImdb);
 
         if (found) {
-          found.ratingImdb = liveImdbRating;
+          found.ratingImdb = liveImdbRating || parseRatingValue(fallbackImdb);
           globalDescriptionCache[filmId] = found;
           return found;
         }
@@ -434,7 +471,7 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
             title: title || 'Кинопоиск',
             year: year ? String(year) : '',
             rating,
-            ratingImdb: liveImdbRating,
+            ratingImdb: liveImdbRating || parseRatingValue(fallbackImdb),
             runtimeText,
             description: shortDesc || 'Описание отсутствует.'
           };
@@ -460,7 +497,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v95.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v96.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -1018,7 +1055,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v95.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v96.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

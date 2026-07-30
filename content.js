@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v94.0.0
- * Accurate Series Seasons (No 'Сериал' Fallback), Movie Runtime Display & Guaranteed IMDb Extraction
+ * Kinopoisk Downloader - Content Script v96.0.0
+ * Poster Tooltip IMDb Badges + Main Film/Series Page IMDb Badge Injector
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v94.0.0');
+  console.log('[Kinopoisk Downloader] Active v96.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -60,6 +60,50 @@
     }
 
     return false;
+  }
+
+  // --- Main Film/Series Page IMDb Badge Injector ---
+  function injectMainPageImdbBadge() {
+    if (!isMainMediaPage()) return;
+    if (document.getElementById('kp-dl-main-imdb-badge')) return;
+
+    const currentUrlMatch = location.pathname.match(/\/(film|series)\/([a-zA-Z0-9_-]+)/);
+    if (!currentUrlMatch) return;
+
+    const filmId = currentUrlMatch[2];
+    const isSeries = location.pathname.includes('/series/');
+
+    // Target Kinopoisk score badge on main page
+    const kpRatingEl = document.querySelector('[class*="film-rating"], [class*="sidebar"] [class*="rating"], [class*="header"] [class*="rating"], [data-tid="rating"]') ||
+                       Array.from(document.querySelectorAll('span, div')).find(el => {
+                         const text = (el.innerText || '').trim();
+                         return /^[1-9]\.\d$/.test(text) && el.children.length === 0 && el.offsetHeight > 10;
+                       });
+
+    if (!kpRatingEl) return;
+
+    const cardTitle = extractFilmData().ruTitle;
+
+    chrome.runtime.sendMessage({
+      action: 'FETCH_FILM_DESCRIPTION',
+      filmId: filmId,
+      cardTitle: cardTitle,
+      isSeries: isSeries
+    }, (res) => {
+      if (res && res.success && res.data && res.data.ratingImdb) {
+        if (document.getElementById('kp-dl-main-imdb-badge')) return;
+
+        const badge = document.createElement('div');
+        badge.id = 'kp-dl-main-imdb-badge';
+        badge.className = 'kp-dl-main-imdb-badge';
+        badge.innerText = `IMDb ${res.data.ratingImdb}`;
+        badge.title = 'Текущий рейтинг IMDb';
+
+        if (kpRatingEl.parentElement) {
+          kpRatingEl.parentElement.appendChild(badge);
+        }
+      }
+    });
   }
 
   // --- Hover Tooltip Feature ---
@@ -793,7 +837,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v94.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v96.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',
@@ -1100,6 +1144,7 @@
       if (!existing) {
         createDownloadButton();
       }
+      injectMainPageImdbBadge();
     }
   }
 

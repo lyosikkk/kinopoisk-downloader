@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v80.0.0
- * Tooltip Slogan & Sentence Extraction Support
+ * Kinopoisk Downloader - Content Script v81.0.0
+ * Interactive Tooltip, UUID Links Support & Clean Loading Text
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v80.0.0');
+  console.log('[Kinopoisk Downloader] Active v81.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -24,7 +24,7 @@
 
   function isMainMediaPage() {
     const pathname = location.pathname;
-    return /^\/(film|series)\/(\d+)\/?$/.test(pathname);
+    return /^\/(film|series)\/([a-zA-Z0-9_-]+)\/?$/.test(pathname);
   }
 
   function isPromoBannerLink(link) {
@@ -66,6 +66,9 @@
   let tooltipEl = null;
   let hoverTimer = null;
   let currentHoverFilmId = null;
+  let isMouseOverTooltip = false;
+  let isMouseOverLink = false;
+
   const descriptionCache = {};
 
   function cleanTitleString(str) {
@@ -105,6 +108,27 @@
     return (lastSpace > 40 ? cut.substring(0, lastSpace) : cut).trim() + '.';
   }
 
+  function extractCardTitle(link) {
+    if (!link) return '';
+    const img = link.querySelector('img');
+    if (img && img.alt) return img.alt.trim();
+
+    const titleAttr = link.getAttribute('title') || link.getAttribute('aria-label');
+    if (titleAttr) return titleAttr.trim();
+
+    let parentCard = link.parentElement;
+    for (let i = 0; i < 3; i++) {
+      if (!parentCard) break;
+      const titleEl = parentCard.querySelector('[class*="title"], [class*="name"], span, p');
+      if (titleEl && titleEl.innerText && titleEl.innerText.length > 1) {
+        return titleEl.innerText.trim();
+      }
+      parentCard = parentCard.parentElement;
+    }
+
+    return '';
+  }
+
   function scanPageNextDataCache() {
     const scriptEl = document.getElementById('__NEXT_DATA__');
     if (!scriptEl) return;
@@ -115,16 +139,16 @@
       const scanObj = (obj) => {
         if (!obj || typeof obj !== 'object') return;
 
-        const id = obj.id || obj.filmId || obj.movieId;
+        const id = obj.id || obj.filmId || obj.movieId || obj.contentId || obj.uuid || obj.kpId;
         const rawShortDesc = obj.topText || obj.shortDescription;
-        const rawSynopsis = obj.synopsis || obj.description;
-        const slogan = obj.slogan ? obj.slogan.replace(/^["'«»]+|["'«»]+$/g, '').trim() : '';
-        const rawTitle = obj.title || obj.name || obj.ruName || obj.russianTitle;
+        const rawSynopsis = obj.synopsis || obj.description || obj.annotation;
+        const slogan = (obj.slogan || obj.tagline) ? String(obj.slogan || obj.tagline).replace(/^["'«»]+|["'«»]+$/g, '').trim() : '';
+        const rawTitle = obj.title || obj.name || obj.ruName || obj.russianTitle || obj.originalTitle;
 
         if (id && rawTitle && (rawShortDesc || rawSynopsis || slogan)) {
           const year = obj.year || (obj.releaseDate ? String(obj.releaseDate).substring(0, 4) : '');
           let rating = '';
-          const r = obj.rating?.filmCrypto?.rating || obj.rating?.rating || obj.ratingValue || obj.rating;
+          const r = obj.rating?.filmCrypto?.rating || obj.rating?.rating || obj.ratingValue || obj.rating || obj.userRating;
           if (r) {
             const numR = parseFloat(r);
             if (!isNaN(numR) && numR > 0) rating = numR.toFixed(1);
@@ -176,6 +200,20 @@
       <div class="kp-dl-tooltip-slogan"></div>
       <div class="kp-dl-tooltip-desc"></div>
     `;
+
+    tooltipEl.addEventListener('mouseenter', () => {
+      isMouseOverTooltip = true;
+    });
+
+    tooltipEl.addEventListener('mouseleave', () => {
+      isMouseOverTooltip = false;
+      setTimeout(() => {
+        if (!isMouseOverLink && !isMouseOverTooltip) {
+          hideTooltip();
+        }
+      }, 100);
+    });
+
     document.body.appendChild(tooltipEl);
   }
 
@@ -229,6 +267,7 @@
   }
 
   function hideTooltip() {
+    if (isMouseOverTooltip) return;
     if (hoverTimer) clearTimeout(hoverTimer);
     currentHoverFilmId = null;
     if (tooltipEl) {
@@ -271,7 +310,7 @@
     }
 
     if (descEl) {
-      descEl.innerText = data.description || 'Краткое описание отсутствует.';
+      descEl.innerText = data.description || '';
     }
 
     positionTooltip(targetEl);
@@ -283,7 +322,7 @@
     createTooltipElement();
 
     document.addEventListener('mouseover', (e) => {
-      const currentUrlMatch = location.pathname.match(/\/(film|series)\/(\d+)/);
+      const currentUrlMatch = location.pathname.match(/\/(film|series)\/([a-zA-Z0-9_-]+)/);
       const currentPageFilmId = currentUrlMatch ? currentUrlMatch[2] : null;
 
       const link = e.target.closest('a[href*="/film/"], a[href*="/series/"]');
@@ -294,7 +333,7 @@
       }
 
       const href = link.getAttribute('href') || '';
-      const match = href.match(/\/(film|series)\/(\d+)/);
+      const match = href.match(/\/(film|series)\/([a-zA-Z0-9_-]+)/);
       if (!match) return;
 
       const filmId = match[2];
@@ -303,11 +342,14 @@
         return;
       }
 
+      isMouseOverLink = true;
       currentHoverFilmId = filmId;
       clearTimeout(hoverTimer);
 
       const isCached = Boolean(descriptionCache[filmId]);
       const delayMs = isCached ? 20 : 120;
+
+      const cardTitle = extractCardTitle(link);
 
       hoverTimer = setTimeout(() => {
         if (currentHoverFilmId !== filmId) return;
@@ -316,13 +358,14 @@
           showTooltipData(descriptionCache[filmId], link);
         } else {
           showTooltipData({
-            title: 'Загрузка...',
-            description: 'Получение краткого описания...'
+            title: cardTitle || 'Загрузка...',
+            description: ''
           }, link);
 
           chrome.runtime.sendMessage({
             action: 'FETCH_FILM_DESCRIPTION',
-            filmId: filmId
+            filmId: filmId,
+            cardTitle: cardTitle
           }, (res) => {
             if (res && res.success && res.data) {
               descriptionCache[filmId] = res.data;
@@ -332,8 +375,8 @@
             } else {
               if (currentHoverFilmId === filmId) {
                 showTooltipData({
-                  title: 'Описание не найдено',
-                  description: 'Не удалось загрузить краткое описание.'
+                  title: cardTitle || 'Кинопоиск',
+                  description: 'Описание отсутствует.'
                 }, link);
               }
             }
@@ -345,12 +388,19 @@
     document.addEventListener('mouseout', (e) => {
       const link = e.target.closest('a[href*="/film/"], a[href*="/series/"]');
       if (link) {
-        hideTooltip();
+        isMouseOverLink = false;
+        setTimeout(() => {
+          if (!isMouseOverLink && !isMouseOverTooltip) {
+            hideTooltip();
+          }
+        }, 120);
       }
     });
 
     window.addEventListener('scroll', () => {
-      hideTooltip();
+      if (!isMouseOverTooltip) {
+        hideTooltip();
+      }
     }, { passive: true });
   }
 
@@ -503,7 +553,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v80.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v81.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

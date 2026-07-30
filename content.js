@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v106.0.0
+ * Kinopoisk Downloader - Content Script v107.0.0
  * Poster Tooltip IMDb Badges + Under-Score Main Page IMDb Badge Injector
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v106.0.0');
+  console.log('[Kinopoisk Downloader] Active v107.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -151,7 +151,6 @@
 
       const parent = scoreEl.parentElement;
       if (parent) {
-        // Place badge directly BELOW Kinopoisk score element
         if (scoreEl.nextSibling) {
           parent.insertBefore(badge, scoreEl.nextSibling);
         } else {
@@ -267,13 +266,27 @@
   function extractCardRating(link) {
     if (!link) return '';
     let parentCard = link.parentElement;
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       if (!parentCard) break;
-      const ratingEl = parentCard.querySelector('[class*="rating"], [class*="vote"], [class*="score"]');
+
+      // 1. Check rating/score class elements
+      const ratingEl = parentCard.querySelector('[class*="rating"], [class*="vote"], [class*="score"], [class*="badge"], [class*="Rating"], [class*="Badge"]');
       if (ratingEl && ratingEl.innerText) {
         const match = ratingEl.innerText.match(/\b([1-9]\.\d|10\.0|10)\b/);
         if (match) return match[1];
       }
+
+      // 2. Universal leaf-node text scanner for green score badge e.g. "8.2", "7.8"
+      const allEls = Array.from(parentCard.querySelectorAll('*'));
+      for (const el of allEls) {
+        if (el.children.length === 0) {
+          const t = (el.innerText || el.textContent || '').trim();
+          if (/^[1-9]\.\d$/.test(t)) {
+            return t;
+          }
+        }
+      }
+
       parentCard = parentCard.parentElement;
     }
     return '';
@@ -595,26 +608,29 @@
             description: ''
           }, link, isSeries);
 
-          // 1. Direct XML Fetch for instant IMDb rating (numeric ID)
-          fetchKinopoiskRatingXmlDirect(filmId).then(xmlData => {
-            if (xmlData && xmlData.imdb && currentHoverFilmId === filmId) {
-              if (!descriptionCache[filmId]) {
-                descriptionCache[filmId] = {
-                  filmId,
-                  title: cardTitle,
-                  rating: cardRating || xmlData.kp,
-                  ratingImdb: xmlData.imdb,
-                  runtimeText: '',
-                  description: ''
-                };
-              } else {
-                descriptionCache[filmId].ratingImdb = xmlData.imdb;
+          // Direct XML Fetch if numeric ID
+          if (/^\d+$/.test(filmId)) {
+            fetchKinopoiskRatingXmlDirect(filmId).then(xmlData => {
+              if (xmlData && (xmlData.imdb || xmlData.kp) && currentHoverFilmId === filmId) {
+                if (!descriptionCache[filmId]) {
+                  descriptionCache[filmId] = {
+                    filmId,
+                    title: cardTitle,
+                    rating: cardRating || xmlData.kp,
+                    ratingImdb: xmlData.imdb,
+                    runtimeText: '',
+                    description: ''
+                  };
+                } else {
+                  if (xmlData.imdb) descriptionCache[filmId].ratingImdb = xmlData.imdb;
+                  if (!descriptionCache[filmId].rating && xmlData.kp) descriptionCache[filmId].rating = xmlData.kp;
+                }
+                showTooltipData(descriptionCache[filmId], link, isSeries);
               }
-              showTooltipData(descriptionCache[filmId], link, isSeries);
-            }
-          });
+            });
+          }
 
-          // 2. Complete Description & Runtime Fetch
+          // Complete Description, Rating & Transliterated IMDb Fetch
           chrome.runtime.sendMessage({
             action: 'FETCH_FILM_DESCRIPTION',
             filmId: filmId,
@@ -816,7 +832,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v106.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v107.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

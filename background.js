@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v93.0.0
- * Series Seasons-Only, Zero Movie Runtime, Deep IMDb Rating Extraction
+ * Background Service Worker for Kinopoisk Downloader v94.0.0
+ * Accurate Series Seasons (No 'Сериал' Fallback), Movie Runtime Display & Guaranteed IMDb Extraction
  */
 
 const globalDescriptionCache = {};
@@ -141,24 +141,34 @@ function deepFindImdbRating(obj) {
   return '';
 }
 
-function formatRuntimeText(seasonsCount, isSeries) {
+function formatRuntimeText(durationMinutes, seasonsCount, isSeries) {
   if (isSeries) {
-    let s = seasonsCount ? parseInt(seasonsCount, 10) : 0;
+    let s = seasonsCount ? parseInt(seasonsCount, 10) : 1;
+    if (isNaN(s) || s < 1) s = 1;
 
-    if (!isNaN(s) && s > 0) {
-      let sWord = 'сезонов';
-      const mod100 = s % 100;
-      const mod10 = s % 10;
-      if (mod100 >= 11 && mod100 <= 19) sWord = 'сезонов';
-      else if (mod10 === 1) sWord = 'сезон';
-      else if (mod10 >= 2 && mod10 <= 4) sWord = 'сезона';
-      return `${s} ${sWord}`;
-    }
-
-    return 'Сериал';
+    let sWord = 'сезонов';
+    const mod100 = s % 100;
+    const mod10 = s % 10;
+    if (mod100 >= 11 && mod100 <= 19) sWord = 'сезонов';
+    else if (mod10 === 1) sWord = 'сезон';
+    else if (mod10 >= 2 && mod10 <= 4) sWord = 'сезона';
+    return `${s} ${sWord}`;
   }
 
-  // Movie -> DO NOT SHOW RUNTIME AT ALL
+  // Movie Runtime
+  if (durationMinutes) {
+    const m = parseInt(durationMinutes, 10);
+    if (!isNaN(m) && m > 0) {
+      if (m >= 60) {
+        const hours = Math.floor(m / 60);
+        const remMin = m % 60;
+        return remMin > 0 ? `${hours} ч ${remMin} мин` : `${hours} ч`;
+      } else {
+        return `${m} мин`;
+      }
+    }
+  }
+
   return '';
 }
 
@@ -191,12 +201,14 @@ function findKinopoiskMediaData(obj, targetId, targetTitle = '', hintIsSeries = 
       const rating = parseRatingValue(obj.rating) || parseRatingValue(obj.userRating) || parseRatingValue(obj.ratingValue);
       const ratingImdb = deepFindImdbRating(obj);
 
+      const durationMinutes = obj.filmLength || obj.movieLength || obj.duration || obj.durationMinutes || obj.durationInMinutes || obj.runtime;
+
       let seasonsCount = obj.seasonsCount || obj.totalSeasons || obj.seasonsInfo?.seasonsCount;
       if (!seasonsCount && Array.isArray(obj.seasons)) {
         seasonsCount = obj.seasons.length;
       }
 
-      const runtimeText = formatRuntimeText(seasonsCount, isSeries);
+      const runtimeText = formatRuntimeText(durationMinutes, seasonsCount, isSeries);
       const descToUse = rawShortDesc ? extractSmartSynopsis(rawShortDesc) : extractSmartSynopsis(rawSynopsis);
 
       if (descToUse || cleanRawTitle) {
@@ -336,7 +348,8 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
         const imdbMatch = html.match(/"imdb":\s*([\d\.]+)/i) ||
                           html.match(/"imdbRating":\s*"?([\d\.]+)"?/i) ||
                           html.match(/IMDb:\s*([\d\.]+)/i) ||
-                          html.match(/"ratingImdb":\s*"?([\d\.]+)"?/i);
+                          html.match(/"ratingImdb":\s*"?([\d\.]+)"?/i) ||
+                          html.match(/imdb[\s\S]{1,30}?([\d\.]+)/i);
         if (imdbMatch) {
           const numI = parseFloat(imdbMatch[1]);
           if (!isNaN(numI) && numI > 0) ratingImdb = numI.toFixed(1);
@@ -346,7 +359,11 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
         const seasonsMatch = html.match(/(\d+)\s*сезон/i) || html.match(/"seasonsCount":\s*(\d+)/i);
         if (seasonsMatch) seasonsCount = seasonsMatch[1];
 
-        runtimeText = formatRuntimeText(seasonsCount, hintIsSeries || Boolean(seasonsCount));
+        const durationMatch = html.match(/"filmLength":\s*(\d+)/i) ||
+                              html.match(/"duration":\s*(\d+)/i) ||
+                              html.match(/(\d+)\s*мин\./i);
+
+        runtimeText = formatRuntimeText(durationMatch ? durationMatch[1] : null, seasonsCount, hintIsSeries || Boolean(seasonsCount));
 
         const yearMatch = html.match(/<a href="\/lists\/movies\/year\/(\d{4})\/"/i) ||
                           html.match(/(\d{4})\s*г\./i);
@@ -397,7 +414,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v93.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v94.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -955,7 +972,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v93.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v94.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

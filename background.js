@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v99.0.0
- * Full ISO-8601 & Universal Movie Runtime Parser + IMDb Live Rating Fetcher
+ * Background Service Worker for Kinopoisk Downloader v100.0.0
+ * Universal Movie Runtime Extractor (Full HTML Stream + Deep JSON + ISO 8601 + Regex)
  */
 
 const globalDescriptionCache = {};
@@ -113,10 +113,13 @@ function parseRatingValue(rObj) {
 
 function parseIsoDuration(str) {
   if (!str) return 0;
-  if (typeof str === 'number') return str;
+  if (typeof str === 'number') return str > 0 && str < 600 ? str : 0;
   const s = String(str).trim();
 
-  if (/^\d+$/.test(s)) return parseInt(s, 10);
+  if (/^\d+$/.test(s)) {
+    const val = parseInt(s, 10);
+    return val > 0 && val < 600 ? val : 0;
+  }
 
   // ISO 8601: PT2H17M or PT137M or PT1H45M
   const match = s.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/i);
@@ -134,6 +137,82 @@ function parseIsoDuration(str) {
     const h = hMatch ? parseInt(hMatch[1], 10) : 0;
     const m = mMatch ? parseInt(mMatch[1], 10) : 0;
     return h * 60 + m;
+  }
+
+  return 0;
+}
+
+function deepFindDurationMinutes(obj) {
+  if (!obj || typeof obj !== 'object') return 0;
+
+  const candidates = [
+    obj.filmLength, obj.movieLength, obj.duration, obj.durationMinutes,
+    obj.durationInMinutes, obj.runtime, obj.filmLengthMinutes, obj.totalDuration
+  ];
+
+  for (const c of candidates) {
+    if (c) {
+      const parsed = parseIsoDuration(c);
+      if (parsed > 0 && parsed < 600) return parsed;
+    }
+  }
+
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const res = deepFindDurationMinutes(item);
+      if (res > 0) return res;
+    }
+  } else {
+    for (const k of Object.keys(obj)) {
+      if (k === 'navigation' || k === 'user' || k === 'session' || k === 'auth') continue;
+      const res = deepFindDurationMinutes(obj[k]);
+      if (res > 0) return res;
+    }
+  }
+
+  return 0;
+}
+
+function extractUniversalDuration(obj, html) {
+  if (obj && typeof obj === 'object') {
+    const jsonMins = deepFindDurationMinutes(obj);
+    if (jsonMins > 0) return jsonMins;
+  }
+
+  if (!html) return 0;
+
+  const isoMatch = html.match(/itemprop="duration"[^>]*content="([^"]+)"/i) ||
+                   html.match(/"duration":\s*"([^"]+)"/i);
+  if (isoMatch) {
+    const mins = parseIsoDuration(isoMatch[1]);
+    if (mins > 0) return mins;
+  }
+
+  const numMatches = [
+    html.match(/"filmLength":\s*(\d+)/i),
+    html.match(/"movieLength":\s*(\d+)/i),
+    html.match(/"durationMinutes":\s*(\d+)/i),
+    html.match(/"duration":\s*(\d+)/i),
+    html.match(/"runtime":\s*(\d+)/i)
+  ];
+  for (const nm of numMatches) {
+    if (nm) {
+      const val = parseInt(nm[1], 10);
+      if (!isNaN(val) && val > 0 && val < 600) return val;
+    }
+  }
+
+  const hMinsMatch = html.match(/\b([1-4])\s*ч(?:аса|асов)?\s*(\d{1,2})\s*мин/i);
+  if (hMinsMatch) {
+    const h = parseInt(hMinsMatch[1], 10);
+    const m = parseInt(hMinsMatch[2], 10);
+    return h * 60 + m;
+  }
+
+  const minsOnlyMatch = html.match(/\b(\d{2,3})\s*мин\b/i);
+  if (minsOnlyMatch) {
+    const val = parseInt(minsOnlyMatch[1], 10);
+    if (val >= 20 && val <= 500) return val;
   }
 
   return 0;
@@ -315,7 +394,7 @@ function findKinopoiskMediaData(obj, targetId, targetTitle = '', hintIsSeries = 
       
       const imdbId = deepFindImdbId(obj);
       const fallbackImdb = deepFindFallbackImdbRating(obj);
-      const rawDuration = obj.filmLength || obj.movieLength || obj.duration || obj.durationMinutes || obj.durationInMinutes || obj.runtime;
+      const rawDuration = deepFindDurationMinutes(obj);
 
       let seasonsCount = obj.seasonsCount || obj.totalSeasons || obj.seasonsInfo?.seasonsCount;
       if (!seasonsCount && Array.isArray(obj.seasons)) {
@@ -358,7 +437,7 @@ function findKinopoiskMediaData(obj, targetId, targetTitle = '', hintIsSeries = 
   return null;
 }
 
-async function fetchFastStreamHtml(url, signal) {
+async function fetchFullPageHtml(url, signal) {
   const res = await fetch(url, {
     signal,
     redirect: 'follow',
@@ -369,40 +448,13 @@ async function fetchFastStreamHtml(url, signal) {
   });
 
   if (!res.ok) return null;
-
-  if (res.body && typeof res.body.getReader === 'function') {
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let chunks = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (value) {
-          chunks += decoder.decode(value, { stream: true });
-        }
-
-        if (chunks.includes('</script>') && chunks.includes('__NEXT_DATA__')) {
-          reader.cancel().catch(() => {});
-          break;
-        }
-        if (chunks.length > 300000 || done) {
-          reader.cancel().catch(() => {});
-          break;
-        }
-      }
-    } catch (e) {}
-
-    return chunks;
-  } else {
-    return await res.text();
-  }
+  return await res.text();
 }
 
 async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false) {
   if (!filmId) return null;
 
-  if (globalDescriptionCache[filmId] && globalDescriptionCache[filmId].ratingImdb) {
+  if (globalDescriptionCache[filmId] && globalDescriptionCache[filmId].ratingImdb && globalDescriptionCache[filmId].runtimeText) {
     return globalDescriptionCache[filmId];
   }
 
@@ -419,9 +471,9 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
   for (const url of targets) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-      const html = await fetchFastStreamHtml(url, controller.signal);
+      const html = await fetchFullPageHtml(url, controller.signal);
       clearTimeout(timeoutId);
 
       if (html && html.length > 200) {
@@ -456,28 +508,18 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
         // Live IMDb rating
         const liveImdbRating = await fetchTrueImdbRating(imdbId, origTitle, cardTitle, found?.year, fallbackImdb);
 
-        // Universal HTML Runtime Parsing (ISO 8601 + text regex)
-        let rawHtmlDuration = null;
-        const isoMatch = html.match(/itemprop="duration"\s+content="([^"]+)"/i) ||
-                         html.match(/"duration":\s*"([^"]+)"/i) ||
-                         html.match(/"filmLength":\s*(\d+)/i) ||
-                         html.match(/"durationMinutes":\s*(\d+)/i);
-        if (isoMatch) {
-          rawHtmlDuration = isoMatch[1];
-        } else {
-          const minTextMatch = html.match(/(\d+)\s*мин\b/i);
-          if (minTextMatch) rawHtmlDuration = minTextMatch[1];
-        }
+        // Universal Duration Extractor
+        const durationMins = extractUniversalDuration(found, html);
 
         let seasonsCount = null;
         const seasonsMatch = html.match(/(\d+)\s*сезон/i) || html.match(/"seasonsCount":\s*(\d+)/i);
         if (seasonsMatch) seasonsCount = seasonsMatch[1];
 
-        const runtimeText = formatRuntimeText(found?.runtimeText || rawHtmlDuration, seasonsCount, hintIsSeries || Boolean(seasonsCount));
+        const runtimeText = formatRuntimeText(durationMins, seasonsCount, hintIsSeries || Boolean(seasonsCount));
 
         if (found) {
           found.ratingImdb = liveImdbRating || parseRatingValue(fallbackImdb);
-          if (!found.runtimeText && runtimeText) {
+          if (runtimeText) {
             found.runtimeText = runtimeText;
           }
           globalDescriptionCache[filmId] = found;
@@ -555,7 +597,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v99.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v100.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -1113,7 +1155,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v99.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v100.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

@@ -1,4 +1,4 @@
-/* Kinopoisk Light Button & Popup Styles v82.0 - Clean Title without Year & Rating Badge */
+/* Kinopoisk Light Button & Popup Styles v84.0 - No Slogans & Hidden Empty Badges */
 
 .kp-dl-wrapper {
   position: relative !important;
@@ -353,7 +353,7 @@
   to { transform: rotate(360deg); }
 }
 
-/* Tooltip Popover Styles for Poster Hover v82.0 */
+/* Tooltip Popover Styles for Poster Hover v84.0 */
 
 .kp-dl-hover-tooltip {
   position: fixed !important;
@@ -407,17 +407,8 @@
   padding: 2px 6px !important;
   border-radius: 6px !important;
   white-space: nowrap !important;
-  display: inline-block !important;
+  display: none !important;
   flex-shrink: 0 !important;
-}
-
-.kp-dl-tooltip-slogan {
-  font-size: 12px !important;
-  font-style: italic !important;
-  color: #ff9933 !important;
-  margin-bottom: 6px !important;
-  line-height: 1.35 !important;
-  display: block !important;
 }
 
 .kp-dl-tooltip-desc {

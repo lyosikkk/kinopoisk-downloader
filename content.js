@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v83.0.0
- * Pure Title Cleanser - Removes Year & Genre Suffixes (. 2026, драма)
+ * Kinopoisk Downloader - Content Script v84.0.0
+ * Pure Title Cleanser, No Slogan, Strict Rating Display
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v83.0.0');
+  console.log('[Kinopoisk Downloader] Active v84.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -75,6 +75,7 @@
     if (!str) return '';
     return str
       .replace(/[\.,\(\s]+\b(19\d\d|20\d\d)\b[\s\S]*/gi, '')
+      .replace(/[\.,\/\(—\s]+(драма|комедия|боевик|триллер|детектив|фантастика|фэнтези|ужасы|мелодрама|приключения|криминал|семейный|мультфильм|аниме|документальный|история|музыка|биография|вестерн|мюзикл|сериал|фильм)\b[\s\S]*/gi, '')
       .replace(/^["'«»“”„\s]+|["'«»“”„\s]+$/g, '')
       .replace(/&quot;/g, '')
       .replace(/&laquo;/g, '')
@@ -82,8 +83,8 @@
       .trim();
   }
 
-  function extractSmartSynopsis(fullText, slogan) {
-    if (!fullText) return slogan ? `«${slogan.replace(/^["'«»]+|["'«»]+$/g, '')}»` : '';
+  function extractSmartSynopsis(fullText) {
+    if (!fullText) return '';
 
     let clean = fullText.replace(/[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000]/g, ' ').trim();
     clean = clean.replace(/^Рецензия на фильм\s+[^:]+:\s*/i, '').trim();
@@ -130,6 +131,22 @@
     return '';
   }
 
+  function parseRatingValue(rObj) {
+    if (!rObj) return '';
+    if (typeof rObj === 'number' || typeof rObj === 'string') {
+      const num = parseFloat(rObj);
+      if (!isNaN(num) && num > 0 && num <= 10) return num.toFixed(1);
+    }
+    if (typeof rObj === 'object') {
+      const candidate = rObj.kp || rObj.value || rObj.rating || rObj.ratingValue || rObj.filmCrypto?.rating;
+      if (candidate) {
+        const num = parseFloat(candidate);
+        if (!isNaN(num) && num > 0 && num <= 10) return num.toFixed(1);
+      }
+    }
+    return '';
+  }
+
   function scanPageNextDataCache() {
     const scriptEl = document.getElementById('__NEXT_DATA__');
     if (!scriptEl) return;
@@ -143,26 +160,19 @@
         const id = obj.id || obj.filmId || obj.movieId || obj.contentId || obj.uuid || obj.kpId;
         const rawShortDesc = obj.topText || obj.shortDescription;
         const rawSynopsis = obj.synopsis || obj.description || obj.annotation;
-        const slogan = (obj.slogan || obj.tagline) ? String(obj.slogan || obj.tagline).replace(/^["'«»]+|["'«»]+$/g, '').trim() : '';
         const rawTitle = obj.title || obj.name || obj.ruName || obj.russianTitle || obj.originalTitle;
 
-        if (id && rawTitle && (rawShortDesc || rawSynopsis || slogan)) {
+        if (id && rawTitle && (rawShortDesc || rawSynopsis)) {
           const year = obj.year || (obj.releaseDate ? String(obj.releaseDate).substring(0, 4) : '');
-          let rating = '';
-          const r = obj.rating?.filmCrypto?.rating || obj.rating?.rating || obj.ratingValue || obj.rating || obj.userRating;
-          if (r) {
-            const numR = parseFloat(r);
-            if (!isNaN(numR) && numR > 0) rating = numR.toFixed(1);
-          }
+          const rating = parseRatingValue(obj.rating) || parseRatingValue(obj.userRating) || parseRatingValue(obj.ratingValue);
 
-          const finalDescription = rawShortDesc ? rawShortDesc.trim() : extractSmartSynopsis(rawSynopsis, slogan);
+          const finalDescription = rawShortDesc ? rawShortDesc.trim() : extractSmartSynopsis(rawSynopsis);
 
           descriptionCache[String(id)] = {
             filmId: String(id),
             title: cleanTitleString(rawTitle),
             year: year ? String(year) : '',
             rating,
-            slogan: slogan || '',
             description: finalDescription
           };
         }
@@ -195,7 +205,6 @@
         <div class="kp-dl-tooltip-title"></div>
         <div class="kp-dl-tooltip-rating"></div>
       </div>
-      <div class="kp-dl-tooltip-slogan"></div>
       <div class="kp-dl-tooltip-desc"></div>
     `;
 
@@ -247,17 +256,12 @@
     if (!tooltipEl) return;
     const titleEl = tooltipEl.querySelector('.kp-dl-tooltip-title');
     const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
-    const sloganEl = tooltipEl.querySelector('.kp-dl-tooltip-slogan');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
     if (titleEl) titleEl.innerText = '';
     if (ratingEl) {
       ratingEl.innerText = '';
       ratingEl.style.display = 'none';
-    }
-    if (sloganEl) {
-      sloganEl.innerText = '';
-      sloganEl.style.display = 'none';
     }
     if (descEl) descEl.innerText = '';
   }
@@ -279,7 +283,6 @@
 
     const titleEl = tooltipEl.querySelector('.kp-dl-tooltip-title');
     const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
-    const sloganEl = tooltipEl.querySelector('.kp-dl-tooltip-slogan');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
     if (titleEl) titleEl.innerText = cleanTitleString(data.title) || 'Загрузка...';
@@ -292,12 +295,11 @@
         if (numRating >= 7.5) ratingEl.style.background = '#3bb33b';
         else if (numRating >= 6.0) ratingEl.style.background = '#777777';
         else ratingEl.style.background = '#e65050';
+      } else {
+        ratingEl.style.display = 'none';
       }
-    }
-
-    if (sloganEl && data.slogan) {
-      sloganEl.innerText = `«${data.slogan}»`;
-      sloganEl.style.display = 'block';
+    } else if (ratingEl) {
+      ratingEl.style.display = 'none';
     }
 
     if (descEl) {
@@ -544,7 +546,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v83.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v84.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

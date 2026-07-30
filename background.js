@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v83.0.0
- * Pure Title String Cleanser - Strips Year and Genre Suffixes (. 2026, драма)
+ * Background Service Worker for Kinopoisk Downloader v84.0.0
+ * Pure Title Cleanser (Strips Genres & Year Suffixes) & Robust Rating Extractor
  */
 
 const globalDescriptionCache = {};
@@ -31,10 +31,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
+const GENRE_WORDS_REGEX = /(драма|комедия|боевик|триллер|детектив|фантастика|фэнтези|ужасы|мелодрама|приключения|криминал|семейный|мультфильм|аниме|документальный|история|музыка|биография|вестерн|мюзикл|сериал|фильм)\b/i;
+
 function cleanTitleString(str) {
   if (!str) return '';
   return str
     .replace(/[\.,\(\s]+\b(19\d\d|20\d\d)\b[\s\S]*/gi, '')
+    .replace(/[\.,\/\(—\s]+(драма|комедия|боевик|триллер|детектив|фантастика|фэнтези|ужасы|мелодрама|приключения|криминал|семейный|мультфильм|аниме|документальный|история|музыка|биография|вестерн|мюзикл|сериал|фильм)\b[\s\S]*/gi, '')
     .replace(/^["'«»“”„\s]+|["'«»“”„\s]+$/g, '')
     .replace(/&quot;/g, '')
     .replace(/&laquo;/g, '')
@@ -42,8 +45,8 @@ function cleanTitleString(str) {
     .trim();
 }
 
-function extractSmartSynopsis(fullText, slogan) {
-  if (!fullText) return slogan ? `«${slogan.replace(/^["'«»]+|["'«»]+$/g, '')}»` : '';
+function extractSmartSynopsis(fullText) {
+  if (!fullText) return '';
 
   let clean = fullText.replace(/[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000]/g, ' ').trim();
   clean = clean.replace(/^Рецензия на фильм\s+[^:]+:\s*/i, '').trim();
@@ -69,6 +72,22 @@ function extractSmartSynopsis(fullText, slogan) {
   return (lastSpace > 40 ? cut.substring(0, lastSpace) : cut).trim() + '.';
 }
 
+function parseRatingValue(rObj) {
+  if (!rObj) return '';
+  if (typeof rObj === 'number' || typeof rObj === 'string') {
+    const num = parseFloat(rObj);
+    if (!isNaN(num) && num > 0 && num <= 10) return num.toFixed(1);
+  }
+  if (typeof rObj === 'object') {
+    const candidate = rObj.kp || rObj.value || rObj.rating || rObj.ratingValue || rObj.filmCrypto?.rating;
+    if (candidate) {
+      const num = parseFloat(candidate);
+      if (!isNaN(num) && num > 0 && num <= 10) return num.toFixed(1);
+    }
+  }
+  return '';
+}
+
 function findKinopoiskMediaData(obj, targetId, targetTitle = '') {
   if (!obj || typeof obj !== 'object') return null;
 
@@ -77,7 +96,6 @@ function findKinopoiskMediaData(obj, targetId, targetTitle = '') {
 
   const rawShortDesc = obj.topText || obj.shortDescription;
   const rawSynopsis = obj.synopsis || obj.description || obj.annotation;
-  const slogan = (obj.slogan || obj.tagline) ? String(obj.slogan || obj.tagline).replace(/^["'«»]+|["'«»]+$/g, '').trim() : '';
   const rawTitle = obj.title || obj.name || obj.ruName || obj.russianTitle || obj.originalTitle;
 
   const cleanRawTitle = rawTitle ? cleanTitleString(rawTitle) : '';
@@ -85,17 +103,11 @@ function findKinopoiskMediaData(obj, targetId, targetTitle = '') {
   const isMatchTitle = cleanTargetTitle && cleanRawTitle && (cleanRawTitle.toLowerCase() === cleanTargetTitle.toLowerCase() || cleanRawTitle.toLowerCase().includes(cleanTargetTitle.toLowerCase()));
 
   if (isMatchId || isMatchTitle || (isMatchId === undefined && (obj.type === 'MOVIE' || obj.type === 'TV_SERIES' || obj['@type'] === 'Movie'))) {
-    if (rawTitle && (rawShortDesc || rawSynopsis || slogan)) {
+    if (rawTitle && (rawShortDesc || rawSynopsis)) {
       const year = obj.year || (obj.releaseDate ? String(obj.releaseDate).substring(0, 4) : '');
-      
-      let rating = '';
-      const r = obj.rating?.filmCrypto?.rating || obj.rating?.rating || obj.ratingValue || obj.rating || obj.userRating;
-      if (r) {
-        const numR = parseFloat(r);
-        if (!isNaN(numR) && numR > 0) rating = numR.toFixed(1);
-      }
+      const rating = parseRatingValue(obj.rating) || parseRatingValue(obj.userRating) || parseRatingValue(obj.ratingValue);
 
-      const finalDescription = rawShortDesc ? rawShortDesc.trim() : extractSmartSynopsis(rawSynopsis, slogan);
+      const finalDescription = rawShortDesc ? rawShortDesc.trim() : extractSmartSynopsis(rawSynopsis);
 
       if (finalDescription || cleanRawTitle) {
         return {
@@ -103,7 +115,6 @@ function findKinopoiskMediaData(obj, targetId, targetTitle = '') {
           title: cleanRawTitle,
           year: year ? String(year) : '',
           rating,
-          slogan: slogan || '',
           description: finalDescription || 'Описание отсутствует.'
         };
       }
@@ -207,12 +218,6 @@ async function fetchFilmDescription(filmId, cardTitle = '') {
         let title = cardTitle ? cleanTitleString(cardTitle) : '';
         let year = '';
         let rating = '';
-        let slogan = '';
-
-        const sloganMatch = html.match(/<tr[^>]*>\s*<td[^>]*>Слоган<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
-        if (sloganMatch) {
-          slogan = sloganMatch[1].replace(/<[^>]+>/g, '').replace(/^["'«»]+|["'«»]+$/g, '').trim();
-        }
 
         const topTextMatch = html.match(/class="[^"]*topText[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
                              html.match(/class="[^"]*socialArgument[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
@@ -223,7 +228,8 @@ async function fetchFilmDescription(filmId, cardTitle = '') {
         }
 
         const ratingMatch = html.match(/"ratingValue":\s*"?([\d\.]+)"?/i) ||
-                            html.match(/property="video:rating"\s+content="([\d\.]+)"/i);
+                            html.match(/property="video:rating"\s+content="([\d\.]+)"/i) ||
+                            html.match(/"rating":\s*\{[^}]*"kp":\s*([\d\.]+)/i);
         if (ratingMatch) {
           const numR = parseFloat(ratingMatch[1]);
           if (!isNaN(numR) && numR > 0) rating = numR.toFixed(1);
@@ -242,7 +248,7 @@ async function fetchFilmDescription(filmId, cardTitle = '') {
           const ogDesc = html.match(/<meta\s+property="og:description"\s+content="([^"]+)"/i) ||
                          html.match(/<meta\s+name="description"\s+content="([^"]+)"/i);
           if (ogDesc) {
-            shortDesc = extractSmartSynopsis(ogDesc[1], slogan);
+            shortDesc = extractSmartSynopsis(ogDesc[1]);
           }
         }
 
@@ -252,7 +258,6 @@ async function fetchFilmDescription(filmId, cardTitle = '') {
             title: title || 'Кинопоиск',
             year: year ? String(year) : '',
             rating,
-            slogan,
             description: shortDesc ? shortDesc.replace(/[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000]/g, ' ').trim() : 'Описание отсутствует.'
           };
           globalDescriptionCache[filmId] = result;
@@ -277,7 +282,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v83.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v84.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -835,7 +840,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v83.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v84.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

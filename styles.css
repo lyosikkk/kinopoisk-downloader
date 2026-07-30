@@ -1,4 +1,4 @@
-/* Kinopoisk Light Button & Popup Styles v96.0 */
+/* Kinopoisk Light Button & Popup Styles v98.0 */
 
 .kp-dl-wrapper {
   position: relative !important;
@@ -353,7 +353,7 @@
   to { transform: rotate(360deg); }
 }
 
-/* Tooltip Popover Styles for Poster Hover v96.0 */
+/* Tooltip Popover Styles for Poster Hover v98.0 */
 
 .kp-dl-hover-tooltip {
   position: fixed !important;
@@ -452,7 +452,7 @@
   border-radius: 2px !important;
 }
 
-/* Main Film/Series Page IMDb Badge v96.0 */
+/* Main Film/Series Page IMDb Badge Horizontal Row v98.0 */
 .kp-dl-main-imdb-badge {
   display: inline-flex !important;
   align-items: center !important;
@@ -460,14 +460,15 @@
   background: #f5c518 !important;
   color: #000000 !important;
   font-weight: 800 !important;
-  font-size: 14px !important;
+  font-size: 15px !important;
   line-height: 1 !important;
-  padding: 5px 10px !important;
+  padding: 6px 11px !important;
   border-radius: 8px !important;
-  margin-left: 10px !important;
+  margin: 0 !important;
   vertical-align: middle !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18) !important;
   user-select: none !important;
   white-space: nowrap !important;
-  z-index: 1000 !important;
+  height: max-content !important;
+  align-self: center !important;
 }

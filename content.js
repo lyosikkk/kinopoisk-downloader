@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v96.0.0
- * Poster Tooltip IMDb Badges + Main Film/Series Page IMDb Badge Injector
+ * Kinopoisk Downloader - Content Script v98.0.0
+ * Poster Tooltip IMDb Badges + Side-by-Side Main Page IMDb Badge Injector
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v96.0.0');
+  console.log('[Kinopoisk Downloader] Active v98.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -62,7 +62,7 @@
     return false;
   }
 
-  // --- Main Film/Series Page IMDb Badge Injector ---
+  // --- Main Film/Series Page IMDb Badge Injector (Placed DIRECTLY side-by-side next to Kinopoisk Rating score) ---
   function injectMainPageImdbBadge() {
     if (!isMainMediaPage()) return;
     if (document.getElementById('kp-dl-main-imdb-badge')) return;
@@ -73,14 +73,28 @@
     const filmId = currentUrlMatch[2];
     const isSeries = location.pathname.includes('/series/');
 
-    // Target Kinopoisk score badge on main page
-    const kpRatingEl = document.querySelector('[class*="film-rating"], [class*="sidebar"] [class*="rating"], [class*="header"] [class*="rating"], [data-tid="rating"]') ||
-                       Array.from(document.querySelectorAll('span, div')).find(el => {
-                         const text = (el.innerText || '').trim();
-                         return /^[1-9]\.\d$/.test(text) && el.children.length === 0 && el.offsetHeight > 10;
-                       });
+    // Find the main KP rating score element (the big rating number like 6.2, 7.8, 8.0)
+    let scoreEl = null;
 
-    if (!kpRatingEl) return;
+    const candidates = Array.from(document.querySelectorAll('[class*="rating"], [class*="score"], [class*="vote"], a[href*="votes"], span, div'));
+    for (const el of candidates) {
+      if (el.children.length === 0) {
+        const text = (el.innerText || el.textContent || '').trim();
+        if (/^[1-9]\.\d$/.test(text)) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top > 0 && rect.top < 600 && rect.left > window.innerWidth * 0.35) {
+            scoreEl = el;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!scoreEl) {
+      scoreEl = document.querySelector('[class*="film-rating"]') || document.querySelector('[data-tid="rating"]');
+    }
+
+    if (!scoreEl) return;
 
     const cardTitle = extractFilmData().ruTitle;
 
@@ -97,10 +111,24 @@
         badge.id = 'kp-dl-main-imdb-badge';
         badge.className = 'kp-dl-main-imdb-badge';
         badge.innerText = `IMDb ${res.data.ratingImdb}`;
-        badge.title = 'Текущий рейтинг IMDb';
+        badge.title = 'Текущий живой рейтинг IMDb';
 
-        if (kpRatingEl.parentElement) {
-          kpRatingEl.parentElement.appendChild(badge);
+        // Wrap scoreEl and badge into a horizontal flex container side-by-side
+        const parent = scoreEl.parentElement;
+        if (parent) {
+          if (window.getComputedStyle(parent).display.includes('flex')) {
+            parent.appendChild(badge);
+          } else {
+            const container = document.createElement('div');
+            container.className = 'kp-dl-score-row';
+            container.style.display = 'inline-flex';
+            container.style.alignItems = 'center';
+            container.style.gap = '12px';
+
+            parent.insertBefore(container, scoreEl);
+            container.appendChild(scoreEl);
+            container.appendChild(badge);
+          }
         }
       }
     });
@@ -837,7 +865,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v96.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v98.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

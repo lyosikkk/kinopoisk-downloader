@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v73.0.0
- * Short Description, Rounded Rating, Smooth Animation, Genre Removed
+ * Kinopoisk Downloader - Content Script v74.0.0
+ * Instant Local SSR Cache Scanner, Clean Quotes, Ultra-Fast Tooltip
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v73.0.0');
+  console.log('[Kinopoisk Downloader] Active v74.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -27,6 +27,63 @@
   let hoverTimer = null;
   let currentHoverFilmId = null;
   const descriptionCache = {};
+
+  function cleanTitleString(str) {
+    if (!str) return '';
+    return str
+      .replace(/^["'«»“”„\s]+|["'«»“”„\s]+$/g, '')
+      .replace(/&quot;/g, '')
+      .replace(/&laquo;/g, '')
+      .replace(/&raquo;/g, '')
+      .trim();
+  }
+
+  // Instant local scanner of page's own __NEXT_DATA__
+  function scanPageNextDataCache() {
+    const scriptEl = document.getElementById('__NEXT_DATA__');
+    if (!scriptEl) return;
+
+    try {
+      const data = JSON.parse(scriptEl.textContent);
+      
+      const scanObj = (obj) => {
+        if (!obj || typeof obj !== 'object') return;
+
+        const id = obj.id || obj.filmId || obj.movieId;
+        const shortDesc = obj.shortDescription || obj.synopsis || obj.slogan;
+        const rawTitle = obj.title || obj.name || obj.ruName || obj.russianTitle;
+
+        if (id && rawTitle && shortDesc) {
+          const year = obj.year || (obj.releaseDate ? String(obj.releaseDate).substring(0, 4) : '');
+          let rating = '';
+          const r = obj.rating?.filmCrypto?.rating || obj.rating?.rating || obj.ratingValue || obj.rating;
+          if (r) {
+            const numR = parseFloat(r);
+            if (!isNaN(numR) && numR > 0) rating = numR.toFixed(1);
+          }
+
+          descriptionCache[String(id)] = {
+            filmId: String(id),
+            title: cleanTitleString(rawTitle),
+            year: year ? String(year) : '',
+            rating,
+            description: shortDesc.trim()
+          };
+        }
+
+        if (Array.isArray(obj)) {
+          for (const item of obj) scanObj(item);
+        } else {
+          for (const k of Object.keys(obj)) {
+            if (k === 'navigation' || k === 'user' || k === 'session' || k === 'auth') continue;
+            scanObj(obj[k]);
+          }
+        }
+      };
+
+      scanObj(data?.props?.pageProps);
+    } catch (e) {}
+  }
 
   function createTooltipElement() {
     if (document.getElementById('kp-dl-hover-tooltip')) {
@@ -94,7 +151,7 @@
     const yearEl = tooltipEl.querySelector('.kp-dl-tooltip-year');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
-    if (titleEl) titleEl.innerText = data.title || 'Без названия';
+    if (titleEl) titleEl.innerText = cleanTitleString(data.title) || 'Без названия';
 
     if (ratingEl) {
       if (data.rating) {
@@ -122,6 +179,7 @@
   }
 
   function initPosterHoverListeners() {
+    scanPageNextDataCache();
     createTooltipElement();
 
     document.addEventListener('mouseover', (e) => {
@@ -141,6 +199,9 @@
 
       currentHoverFilmId = filmId;
       clearTimeout(hoverTimer);
+
+      const isCached = Boolean(descriptionCache[filmId]);
+      const delayMs = isCached ? 50 : 180;
 
       hoverTimer = setTimeout(() => {
         if (currentHoverFilmId !== filmId) return;
@@ -172,7 +233,7 @@
             }
           });
         }
-      }, 300);
+      }, delayMs);
     });
 
     document.addEventListener('mouseout', (e) => {
@@ -336,7 +397,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v73.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v74.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

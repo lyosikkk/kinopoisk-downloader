@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v92.0.0
- * Strict Series vs Movie Runtime & Seasons Extractor
+ * Kinopoisk Downloader - Content Script v93.0.0
+ * Series Seasons-Only, Zero Movie Runtime, Dual Ratings KP + IMDb Guaranteed
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v92.0.0');
+  console.log('[Kinopoisk Downloader] Active v93.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -192,48 +192,35 @@
   function extractCardRuntime(link, isSeries) {
     if (!link) return '';
 
-    if (isSeries) {
-      let parentCard = link.parentElement;
-      for (let i = 0; i < 4; i++) {
-        if (!parentCard) break;
-        const text = parentCard.innerText || '';
-
-        const seasonsMatch = text.match(/(\d+)\s*сезон/i);
-        const epMatch = text.match(/(\d+)\s*сери/i);
-        if (seasonsMatch || epMatch) {
-          let parts = [];
-          if (seasonsMatch) parts.push(`${seasonsMatch[1]} сезон`);
-          if (epMatch) parts.push(`${epMatch[1]} серий`);
-          return parts.join(', ');
-        }
-
-        parentCard = parentCard.parentElement;
-      }
-      return 'Сериал';
+    // If it's a Movie, return EMPTY STRING (DO NOT SHOW MOVIE RUNTIME AT ALL)
+    if (!isSeries) {
+      return '';
     }
 
+    // If it's a TV Series, show ONLY seasons count (NO EPISODES!)
     let parentCard = link.parentElement;
     for (let i = 0; i < 4; i++) {
       if (!parentCard) break;
       const text = parentCard.innerText || '';
 
-      const minMatch = text.match(/(\d+)\s*мин/i);
-      if (minMatch) {
-        const m = parseInt(minMatch[1], 10);
-        if (!isNaN(m) && m > 0) {
-          if (m >= 60) {
-            const h = Math.floor(m / 60);
-            const rem = m % 60;
-            return rem > 0 ? `${h} ч ${rem} мин` : `${h} ч`;
-          }
-          return `${m} мин`;
+      const seasonsMatch = text.match(/(\d+)\s*сезон/i);
+      if (seasonsMatch) {
+        const s = parseInt(seasonsMatch[1], 10);
+        if (!isNaN(s) && s > 0) {
+          let sWord = 'сезонов';
+          const mod100 = s % 100;
+          const mod10 = s % 10;
+          if (mod100 >= 11 && mod100 <= 19) sWord = 'сезонов';
+          else if (mod10 === 1) sWord = 'сезон';
+          else if (mod10 >= 2 && mod10 <= 4) sWord = 'сезона';
+          return `${s} ${sWord}`;
         }
       }
 
       parentCard = parentCard.parentElement;
     }
 
-    return '';
+    return 'Сериал';
   }
 
   function parseRatingValue(rObj) {
@@ -254,16 +241,23 @@
 
   function parseImdbRating(obj) {
     if (!obj) return '';
-    const candidate = obj.imdb || obj.imdbRating || obj.rating?.imdb || obj.rating?.filmCrypto?.imdbRating;
-    return parseRatingValue(candidate);
+    if (typeof obj === 'number' || typeof obj === 'string') {
+      const num = parseFloat(obj);
+      if (!isNaN(num) && num > 0 && num <= 10) return num.toFixed(1);
+    }
+    if (typeof obj === 'object') {
+      const candidate = obj.imdb || obj.imdbRating || obj.rating?.imdb || obj.rating?.filmCrypto?.imdbRating || obj.ratingImdb;
+      if (candidate) {
+        const num = parseFloat(candidate);
+        if (!isNaN(num) && num > 0 && num <= 10) return num.toFixed(1);
+      }
+    }
+    return '';
   }
 
-  function formatRuntimeText(minutes, seasonsCount, episodesCount, isSeries) {
+  function formatRuntimeText(seasonsCount, isSeries) {
     if (isSeries) {
-      let parts = [];
       let s = seasonsCount ? parseInt(seasonsCount, 10) : 0;
-      let ep = episodesCount ? parseInt(episodesCount, 10) : 0;
-
       if (!isNaN(s) && s > 0) {
         let sWord = 'сезонов';
         const mod100 = s % 100;
@@ -271,36 +265,34 @@
         if (mod100 >= 11 && mod100 <= 19) sWord = 'сезонов';
         else if (mod10 === 1) sWord = 'сезон';
         else if (mod10 >= 2 && mod10 <= 4) sWord = 'сезона';
-        parts.push(`${s} ${sWord}`);
+        return `${s} ${sWord}`;
       }
-
-      if (!isNaN(ep) && ep > 0) {
-        let epWord = 'серий';
-        const mod100 = ep % 100;
-        const mod10 = ep % 10;
-        if (mod100 >= 11 && mod100 <= 19) epWord = 'серий';
-        else if (mod10 === 1) epWord = 'серия';
-        else if (mod10 >= 2 && mod10 <= 4) epWord = 'серии';
-        parts.push(`${ep} ${epWord}`);
-      }
-
-      if (parts.length > 0) {
-        return parts.join(', ');
-      }
-
       return 'Сериал';
     }
 
-    if (minutes) {
-      const m = parseInt(minutes, 10);
-      if (!isNaN(m) && m > 0) {
-        if (m >= 60) {
-          const hours = Math.floor(m / 60);
-          const remMin = m % 60;
-          return remMin > 0 ? `${hours} ч ${remMin} мин` : `${hours} ч`;
-        } else {
-          return `${m} мин`;
-        }
+    // Movie -> DO NOT SHOW RUNTIME AT ALL
+    return '';
+  }
+
+  function deepFindImdbRating(obj) {
+    if (!obj || typeof obj !== 'object') return '';
+
+    const direct = parseImdbRating(obj);
+    if (direct) return direct;
+
+    if (obj.imdb) {
+      const parsed = parseRatingValue(obj.imdb);
+      if (parsed) return parsed;
+    }
+    if (obj.imdbRating) {
+      const parsed = parseRatingValue(obj.imdbRating);
+      if (parsed) return parsed;
+    }
+
+    for (const k of Object.keys(obj)) {
+      if (k.toLowerCase().includes('imdb')) {
+        const val = parseRatingValue(obj[k]);
+        if (val) return val;
       }
     }
 
@@ -325,25 +317,16 @@
         if (id && rawTitle && (rawShortDesc || rawSynopsis)) {
           const year = obj.year || (obj.releaseDate ? String(obj.releaseDate).substring(0, 4) : '');
           const rating = parseRatingValue(obj.rating) || parseRatingValue(obj.userRating) || parseRatingValue(obj.ratingValue);
-          const ratingImdb = parseImdbRating(obj);
+          const ratingImdb = deepFindImdbRating(obj);
 
           const isSeries = (obj.type && String(obj.type).toUpperCase().includes('SERIES')) || obj.isSeries || obj.contentKind === 'SERIES' || Boolean(obj.seasonsCount || (Array.isArray(obj.seasons) && obj.seasons.length > 0));
-          const durationMinutes = obj.filmLength || obj.movieLength || obj.duration || obj.durationMinutes || obj.durationInMinutes || obj.runtime;
           
           let seasonsCount = obj.seasonsCount || obj.totalSeasons || obj.seasonsInfo?.seasonsCount;
-          let episodesCount = obj.episodesCount || obj.totalEpisodes || obj.seasonsInfo?.episodesCount;
-
           if (!seasonsCount && Array.isArray(obj.seasons)) {
             seasonsCount = obj.seasons.length;
-            if (!episodesCount) {
-              episodesCount = obj.seasons.reduce((acc, s) => {
-                const epArr = s.episodes || s.items || s.episodeList;
-                return acc + (Array.isArray(epArr) ? epArr.length : (s.episodesCount || 0));
-              }, 0);
-            }
           }
 
-          const runtimeText = formatRuntimeText(durationMinutes, seasonsCount, episodesCount, isSeries);
+          const runtimeText = formatRuntimeText(seasonsCount, isSeries);
           const descToUse = rawShortDesc ? extractSmartSynopsis(rawShortDesc) : extractSmartSynopsis(rawSynopsis);
 
           descriptionCache[String(id)] = {
@@ -511,8 +494,8 @@
       ratingImdbEl.style.display = 'none';
     }
 
-    // Runtime / Seasons
-    const finalRuntime = data.runtimeText || extractCardRuntime(targetEl, isSeries);
+    // Runtime / Seasons (Only for Series!)
+    const finalRuntime = isSeries ? (data.runtimeText || extractCardRuntime(targetEl, true)) : '';
     if (runtimeEl && finalRuntime) {
       runtimeEl.innerText = finalRuntime;
       runtimeEl.style.display = 'block';
@@ -778,7 +761,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v92.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v93.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

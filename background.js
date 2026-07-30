@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v88.0.0
- * Pure Emoji-Free Description & Robust Runtime / Seasons Extractor
+ * Background Service Worker for Kinopoisk Downloader v89.0.0
+ * Pure Kinopoisk Data Extractor (KP + IMDb Ratings, Runtime/Seasons, Clean Descriptions)
  */
 
 const globalDescriptionCache = {};
@@ -61,15 +61,14 @@ function extractSmartSynopsis(fullText) {
   if (!fullText) return '';
 
   let clean = String(fullText).replace(/[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000]/g, ' ').trim();
-  clean = clean.replace(/^[\p{Extended_Pictographic}\u2000-\u3299\uD83C-\uDBFF\uDC00-\uDFFF\s\uFE0F\u200D]+/gu, '').trim();
   clean = clean.replace(/^Рецензия на фильм\s+[^:]+:\s*/i, '').trim();
 
-  if (clean.length <= 180) return clean;
+  if (clean.length <= 200) return clean;
 
   const sentences = clean.match(/[^.!?]+[.!?]+/g) || [];
   let summary = '';
   for (const s of sentences) {
-    if ((summary + s).length <= 190) {
+    if ((summary + s).length <= 210) {
       summary += s;
     } else {
       break;
@@ -80,7 +79,7 @@ function extractSmartSynopsis(fullText) {
     return summary.trim();
   }
 
-  const cut = clean.substring(0, 160);
+  const cut = clean.substring(0, 180);
   const lastSpace = cut.lastIndexOf(' ');
   return (lastSpace > 30 ? cut.substring(0, lastSpace) : cut).trim() + '.';
 }
@@ -99,6 +98,12 @@ function parseRatingValue(rObj) {
     }
   }
   return '';
+}
+
+function parseImdbRating(obj) {
+  if (!obj) return '';
+  const candidate = obj.imdb || obj.imdbRating || obj.rating?.imdb || obj.rating?.filmCrypto?.imdbRating;
+  return parseRatingValue(candidate);
 }
 
 function formatRuntimeText(minutes, seasonsCount, episodesCount, isSeries) {
@@ -167,13 +172,13 @@ function findKinopoiskMediaData(obj, targetId, targetTitle = '') {
     if (rawTitle && (rawShortDesc || rawSynopsis)) {
       const year = obj.year || (obj.releaseDate ? String(obj.releaseDate).substring(0, 4) : '');
       const rating = parseRatingValue(obj.rating) || parseRatingValue(obj.userRating) || parseRatingValue(obj.ratingValue);
+      const ratingImdb = parseImdbRating(obj);
 
       const durationMinutes = obj.filmLength || obj.movieLength || obj.duration || obj.durationMinutes || obj.durationInMinutes || obj.runtime;
       const seasonsCount = obj.seasonsCount || obj.totalSeasons || (Array.isArray(obj.seasons) ? obj.seasons.length : null);
       const episodesCount = obj.episodesCount || obj.totalEpisodes;
 
       const runtimeText = formatRuntimeText(durationMinutes, seasonsCount, episodesCount, isSeries);
-
       const descToUse = rawShortDesc ? extractSmartSynopsis(rawShortDesc) : extractSmartSynopsis(rawSynopsis);
 
       if (descToUse || cleanRawTitle) {
@@ -182,6 +187,7 @@ function findKinopoiskMediaData(obj, targetId, targetTitle = '') {
           title: cleanRawTitle,
           year: year ? String(year) : '',
           rating,
+          ratingImdb,
           runtimeText,
           description: descToUse || 'Описание отсутствует.'
         };
@@ -286,6 +292,7 @@ async function fetchFilmDescription(filmId, cardTitle = '') {
         let title = cardTitle ? cleanTitleString(cardTitle) : '';
         let year = '';
         let rating = '';
+        let ratingImdb = '';
         let runtimeText = '';
 
         const topTextMatch = html.match(/class="[^"]*topText[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
@@ -302,6 +309,14 @@ async function fetchFilmDescription(filmId, cardTitle = '') {
         if (ratingMatch) {
           const numR = parseFloat(ratingMatch[1]);
           if (!isNaN(numR) && numR > 0) rating = numR.toFixed(1);
+        }
+
+        const imdbMatch = html.match(/"imdb":\s*([\d\.]+)/i) ||
+                          html.match(/IMDb:\s*([\d\.]+)/i) ||
+                          html.match(/"imdbRating":\s*"?([\d\.]+)"?/i);
+        if (imdbMatch) {
+          const numI = parseFloat(imdbMatch[1]);
+          if (!isNaN(numI) && numI > 0) ratingImdb = numI.toFixed(1);
         }
 
         const durationMatch = html.match(/"filmLength":\s*(\d+)/i) ||
@@ -334,6 +349,7 @@ async function fetchFilmDescription(filmId, cardTitle = '') {
             title: title || 'Кинопоиск',
             year: year ? String(year) : '',
             rating,
+            ratingImdb,
             runtimeText,
             description: shortDesc || 'Описание отсутствует.'
           };
@@ -359,7 +375,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v88.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v89.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -917,7 +933,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v88.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v89.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

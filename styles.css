@@ -1,6 +1,6 @@
-/* Kinopoisk Light Button & Popup Styles v88.0 - Orange Rating Badge & Clean Tooltip */
+/* Kinopoisk Downloader Styles v89.0 - Full Ad Removal, Dual Rating (KP+IMDb), Runtime & Clean Tooltip */
 
-/* --- Targeted Ad & Anti-Adblock Cleaner (Safe from Anti-Adblock Detection) --- */
+/* --- Ad & Anti-Adblock Cleaner --- */
 [class*="antiAdBlock"],
 [class*="anti-adblock"],
 [class*="AntiAdBlock"],
@@ -368,7 +368,7 @@ div[class*="subscriptionWidget"] {
   to { transform: rotate(360deg); }
 }
 
-/* Tooltip Popover Styles for Poster Hover v88.0 */
+/* Tooltip Popover Styles for Poster Hover v89.0 */
 
 .kp-dl-hover-tooltip {
   position: fixed !important;
@@ -414,7 +414,14 @@ div[class*="subscriptionWidget"] {
   line-height: 1.3 !important;
 }
 
-.kp-dl-tooltip-rating {
+.kp-dl-tooltip-ratings-container {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex-shrink: 0 !important;
+}
+
+.kp-dl-tooltip-rating-kp {
   background: #ff6600 !important;
   color: #ffffff !important;
   font-size: 12px !important;
@@ -422,8 +429,16 @@ div[class*="subscriptionWidget"] {
   padding: 2px 7px !important;
   border-radius: 6px !important;
   white-space: nowrap !important;
-  display: none !important;
-  flex-shrink: 0 !important;
+}
+
+.kp-dl-tooltip-rating-imdb {
+  background: #f5c518 !important;
+  color: #000000 !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  padding: 2px 6px !important;
+  border-radius: 6px !important;
+  white-space: nowrap !important;
 }
 
 .kp-dl-tooltip-runtime {
@@ -431,7 +446,6 @@ div[class*="subscriptionWidget"] {
   font-weight: 600 !important;
   color: #ff9933 !important;
   margin-bottom: 6px !important;
-  display: none !important;
 }
 
 .kp-dl-tooltip-desc {

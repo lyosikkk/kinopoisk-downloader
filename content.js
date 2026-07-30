@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v88.0.0
- * Orange KP Rating, Pure Emoji-Free Short Synopsis & Safe Ad Cleaner
+ * Kinopoisk Downloader - Content Script v89.0.0
+ * Pure Commercial Ad Cleaner, Dual Rating Badges (KP + IMDb), Guaranteed Runtime & Original Synopsis
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v88.0.0');
+  console.log('[Kinopoisk Downloader] Active v89.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -62,29 +62,43 @@
     return false;
   }
 
-  // --- Safe Ad & Anti-Adblock Cleaner ---
+  // --- Strict Ad & Anti-Adblock Cleaner ---
   function removeAnnoyingAds() {
+    // 1. Target elements with text "РЕКЛАМА" (e.g. Huawei commercial banners)
+    document.querySelectorAll('span, div, p, small, a').forEach(el => {
+      if (el.children.length === 0 && el.innerText && el.innerText.trim().toUpperCase() === 'РЕКЛАМА') {
+        let container = el.closest('div[class*="banner"], div[class*="ad"], section, body > div > div');
+        if (container && container !== document.body) {
+          container.remove();
+        } else if (el.parentElement) {
+          el.parentElement.remove();
+        }
+      }
+    });
+
+    // 2. Remove Anti-Adblock popup notification
+    document.querySelectorAll('div, section').forEach(el => {
+      if (el.innerText && el.innerText.includes('Кажется, вы используете блокировщик рекламы')) {
+        const banner = el.closest('div[class*="banner"], div[style*="fixed"]') || el;
+        banner.remove();
+      }
+    });
+
+    // 3. Remove known ad/promo selectors
     const selectors = [
       '[class*="antiAdBlock"]',
       '[class*="anti-adblock"]',
-      '[class*="AntiAdBlock"]',
-      'div[class*="header__plus"]',
+      '[class*="header__plus"]',
       'a[href*="plus.yandex.ru"]',
       'div[class*="plusWidget"]',
       'div[class*="ott-promo"]',
-      'div[class*="subscriptionWidget"]'
+      'div[class*="subscriptionWidget"]',
+      '[data-tid="banner"]',
+      '[data-tid="ad-banner"]',
+      'iframe[src*="ad"]'
     ];
-
-    for (const selector of selectors) {
-      document.querySelectorAll(selector).forEach(el => el.remove());
-    }
-
-    // Remove anti-adblock bottom banner if rendered dynamically
-    document.querySelectorAll('div').forEach(div => {
-      if (div.innerText && div.innerText.includes('Кажется, вы используете блокировщик рекламы')) {
-        const parentBanner = div.closest('[class*="banner"]') || div.closest('div[style*="fixed"]') || div;
-        parentBanner.remove();
-      }
+    selectors.forEach(sel => {
+      document.querySelectorAll(sel).forEach(e => e.remove());
     });
   }
 
@@ -127,15 +141,14 @@
     if (!fullText) return '';
 
     let clean = String(fullText).replace(/[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000]/g, ' ').trim();
-    clean = clean.replace(/^[\p{Extended_Pictographic}\u2000-\u3299\uD83C-\uDBFF\uDC00-\uDFFF\s\uFE0F\u200D]+/gu, '').trim();
     clean = clean.replace(/^Рецензия на фильм\s+[^:]+:\s*/i, '').trim();
 
-    if (clean.length <= 180) return clean;
+    if (clean.length <= 200) return clean;
 
     const sentences = clean.match(/[^.!?]+[.!?]+/g) || [];
     let summary = '';
     for (const s of sentences) {
-      if ((summary + s).length <= 190) {
+      if ((summary + s).length <= 210) {
         summary += s;
       } else {
         break;
@@ -146,7 +159,7 @@
       return summary.trim();
     }
 
-    const cut = clean.substring(0, 160);
+    const cut = clean.substring(0, 180);
     const lastSpace = cut.lastIndexOf(' ');
     return (lastSpace > 30 ? cut.substring(0, lastSpace) : cut).trim() + '.';
   }
@@ -216,6 +229,40 @@
     return '';
   }
 
+  function extractCardRuntime(link) {
+    if (!link) return '';
+    let parentCard = link.parentElement;
+    for (let i = 0; i < 4; i++) {
+      if (!parentCard) break;
+      const text = parentCard.innerText || '';
+      
+      const seasonsMatch = text.match(/(\d+)\s*сезон/i);
+      const epMatch = text.match(/(\d+)\s*сери/i);
+      if (seasonsMatch || epMatch) {
+        let parts = [];
+        if (seasonsMatch) parts.push(`${seasonsMatch[1]} сезон`);
+        if (epMatch) parts.push(`${epMatch[1]} серий`);
+        return parts.join(', ');
+      }
+
+      const minMatch = text.match(/(\d+)\s*мин/i);
+      if (minMatch) {
+        const m = parseInt(minMatch[1], 10);
+        if (!isNaN(m) && m > 0) {
+          if (m >= 60) {
+            const h = Math.floor(m / 60);
+            const rem = m % 60;
+            return rem > 0 ? `${h} ч ${rem} мин` : `${h} ч`;
+          }
+          return `${m} мин`;
+        }
+      }
+
+      parentCard = parentCard.parentElement;
+    }
+    return '';
+  }
+
   function parseRatingValue(rObj) {
     if (!rObj) return '';
     if (typeof rObj === 'number' || typeof rObj === 'string') {
@@ -230,6 +277,12 @@
       }
     }
     return '';
+  }
+
+  function parseImdbRating(obj) {
+    if (!obj) return '';
+    const candidate = obj.imdb || obj.imdbRating || obj.rating?.imdb || obj.rating?.filmCrypto?.imdbRating;
+    return parseRatingValue(candidate);
   }
 
   function formatRuntimeText(minutes, seasonsCount, episodesCount, isSeries) {
@@ -296,6 +349,7 @@
         if (id && rawTitle && (rawShortDesc || rawSynopsis)) {
           const year = obj.year || (obj.releaseDate ? String(obj.releaseDate).substring(0, 4) : '');
           const rating = parseRatingValue(obj.rating) || parseRatingValue(obj.userRating) || parseRatingValue(obj.ratingValue);
+          const ratingImdb = parseImdbRating(obj);
 
           const isSeries = obj.type === 'TV_SERIES' || obj.isSeries || Boolean(obj.seasonsCount || obj.episodesCount);
           const durationMinutes = obj.filmLength || obj.movieLength || obj.duration || obj.durationMinutes || obj.durationInMinutes || obj.runtime;
@@ -310,6 +364,7 @@
             title: cleanTitleString(rawTitle),
             year: year ? String(year) : '',
             rating,
+            ratingImdb,
             runtimeText,
             description: descToUse
           };
@@ -341,7 +396,10 @@
     tooltipEl.innerHTML = `
       <div class="kp-dl-tooltip-header">
         <div class="kp-dl-tooltip-title"></div>
-        <div class="kp-dl-tooltip-rating" title="Рейтинг Кинопоиска"></div>
+        <div class="kp-dl-tooltip-ratings-container">
+          <div class="kp-dl-tooltip-rating-kp" title="Рейтинг Кинопоиска"></div>
+          <div class="kp-dl-tooltip-rating-imdb" title="Рейтинг IMDb"></div>
+        </div>
       </div>
       <div class="kp-dl-tooltip-runtime"></div>
       <div class="kp-dl-tooltip-desc"></div>
@@ -394,14 +452,19 @@
   function resetTooltipDOM() {
     if (!tooltipEl) return;
     const titleEl = tooltipEl.querySelector('.kp-dl-tooltip-title');
-    const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
+    const ratingKpEl = tooltipEl.querySelector('.kp-dl-tooltip-rating-kp');
+    const ratingImdbEl = tooltipEl.querySelector('.kp-dl-tooltip-rating-imdb');
     const runtimeEl = tooltipEl.querySelector('.kp-dl-tooltip-runtime');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
     if (titleEl) titleEl.innerText = '';
-    if (ratingEl) {
-      ratingEl.innerText = '';
-      ratingEl.style.display = 'none';
+    if (ratingKpEl) {
+      ratingKpEl.innerText = '';
+      ratingKpEl.style.display = 'none';
+    }
+    if (ratingImdbEl) {
+      ratingImdbEl.innerText = '';
+      ratingImdbEl.style.display = 'none';
     }
     if (runtimeEl) {
       runtimeEl.innerText = '';
@@ -426,29 +489,45 @@
     resetTooltipDOM();
 
     const titleEl = tooltipEl.querySelector('.kp-dl-tooltip-title');
-    const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
+    const ratingKpEl = tooltipEl.querySelector('.kp-dl-tooltip-rating-kp');
+    const ratingImdbEl = tooltipEl.querySelector('.kp-dl-tooltip-rating-imdb');
     const runtimeEl = tooltipEl.querySelector('.kp-dl-tooltip-runtime');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
     const cleanTitle = cleanTitleString(data.title);
     if (titleEl) titleEl.innerText = cleanTitle || 'Загрузка...';
 
-    const finalRating = data.rating || extractCardRating(targetEl);
-
-    if (ratingEl && finalRating) {
-      const numRating = parseFloat(finalRating);
+    // Kinopoisk Rating (Orange Badge)
+    const finalRatingKp = data.rating || extractCardRating(targetEl);
+    if (ratingKpEl && finalRatingKp) {
+      const numRating = parseFloat(finalRatingKp);
       if (!isNaN(numRating) && numRating > 0) {
-        ratingEl.innerText = numRating.toFixed(1);
-        ratingEl.style.display = 'inline-block';
+        ratingKpEl.innerText = `КП ${numRating.toFixed(1)}`;
+        ratingKpEl.style.display = 'inline-block';
       } else {
-        ratingEl.style.display = 'none';
+        ratingKpEl.style.display = 'none';
       }
-    } else if (ratingEl) {
-      ratingEl.style.display = 'none';
+    } else if (ratingKpEl) {
+      ratingKpEl.style.display = 'none';
     }
 
-    if (runtimeEl && data.runtimeText) {
-      runtimeEl.innerText = data.runtimeText;
+    // IMDb Rating (Gold Badge)
+    if (ratingImdbEl && data.ratingImdb) {
+      const numImdb = parseFloat(data.ratingImdb);
+      if (!isNaN(numImdb) && numImdb > 0) {
+        ratingImdbEl.innerText = `IMDb ${numImdb.toFixed(1)}`;
+        ratingImdbEl.style.display = 'inline-block';
+      } else {
+        ratingImdbEl.style.display = 'none';
+      }
+    } else if (ratingImdbEl) {
+      ratingImdbEl.style.display = 'none';
+    }
+
+    // Runtime / Seasons
+    const finalRuntime = data.runtimeText || extractCardRuntime(targetEl);
+    if (runtimeEl && finalRuntime) {
+      runtimeEl.innerText = finalRuntime;
       runtimeEl.style.display = 'block';
     } else if (runtimeEl) {
       runtimeEl.style.display = 'none';
@@ -496,6 +575,7 @@
 
       const cardTitle = extractCardTitle(link);
       const cardRating = extractCardRating(link);
+      const cardRuntime = extractCardRuntime(link);
 
       hoverTimer = setTimeout(() => {
         if (currentHoverFilmId !== filmId) return;
@@ -506,6 +586,7 @@
           showTooltipData({
             title: cardTitle || 'Загрузка...',
             rating: cardRating,
+            runtimeText: cardRuntime,
             description: ''
           }, link);
 
@@ -518,6 +599,9 @@
               if (cardRating && !res.data.rating) {
                 res.data.rating = cardRating;
               }
+              if (cardRuntime && !res.data.runtimeText) {
+                res.data.runtimeText = cardRuntime;
+              }
               descriptionCache[filmId] = res.data;
               if (currentHoverFilmId === filmId) {
                 showTooltipData(res.data, link);
@@ -527,6 +611,7 @@
                 showTooltipData({
                   title: cardTitle || 'Кинопоиск',
                   rating: cardRating,
+                  runtimeText: cardRuntime,
                   description: 'Описание отсутствует.'
                 }, link);
               }
@@ -704,7 +789,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v88.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v89.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

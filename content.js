@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v90.0.0
- * Ultra-Safe Ad Cleaner (Zero White Screens), Dual Ratings (KP + IMDb), Guaranteed Runtime & Clean Tooltip
+ * Kinopoisk Downloader - Content Script v91.0.0
+ * Pure Extension Features (Torrent Download, Title Sanitizer, Dual Ratings KP+IMDb, Runtime & Tooltip)
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v90.0.0');
+  console.log('[Kinopoisk Downloader] Active v91.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -60,42 +60,6 @@
     }
 
     return false;
-  }
-
-  // --- Ultra-Safe Commercial Ad Cleaner (Never touches page layout or app roots) ---
-  function removeAnnoyingAds() {
-    const mainAppRoot = document.getElementById('__next') || document.getElementById('root') || document.querySelector('main');
-
-    // 1. Hide Anti-Adblock popup specifically by text without node deletion
-    document.querySelectorAll('div, section').forEach(el => {
-      if (el.innerText && el.innerText.includes('Кажется, вы используете блокировщик рекламы')) {
-        if (el !== mainAppRoot && !el.contains(mainAppRoot)) {
-          el.style.display = 'none';
-        }
-      }
-    });
-
-    // 2. Hide top commercial ad banners safely (e.g. Huawei ad banner)
-    const adSelectors = [
-      '[data-tid="ad-banner"]',
-      '[data-tid="banner-commercial"]',
-      '[class*="antiAdBlock"]',
-      '[class*="anti-adblock"]',
-      'div[class*="header__plus"]',
-      'a[href*="plus.yandex.ru"]',
-      'div[class*="plusWidget"]',
-      'div[class*="ott-promo"]',
-      'div[class*="subscriptionWidget"]',
-      'iframe[src*="ad"]'
-    ];
-
-    adSelectors.forEach(sel => {
-      document.querySelectorAll(sel).forEach(el => {
-        if (el !== mainAppRoot && !el.contains(mainAppRoot)) {
-          el.style.display = 'none';
-        }
-      });
-    });
   }
 
   // --- Hover Tooltip Feature ---
@@ -785,7 +749,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v90.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v91.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',
@@ -1085,7 +1049,6 @@
   }
 
   function checkDownloadButtonState() {
-    removeAnnoyingAds();
     const existing = document.getElementById('kp-dl-container');
     if (!isMainMediaPage()) {
       if (existing) existing.remove();
@@ -1097,13 +1060,11 @@
   }
 
   function init() {
-    removeAnnoyingAds();
     initPosterHoverListeners();
     checkDownloadButtonState();
 
     let timer = null;
     const observer = new MutationObserver(() => {
-      removeAnnoyingAds();
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         checkDownloadButtonState();

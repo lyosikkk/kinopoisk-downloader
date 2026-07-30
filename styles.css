@@ -1,17 +1,4 @@
-/* Kinopoisk Downloader Styles v90.0 - Safe Ad Hiding, Orange KP Badge + Gold IMDb Badge */
-
-/* --- Safe Targeted Commercial Ad Cleaner --- */
-[data-tid="ad-banner"],
-[data-tid="banner-commercial"],
-[class*="antiAdBlock"],
-[class*="anti-adblock"],
-[class*="header__plus"],
-a[href*="plus.yandex.ru"],
-div[class*="plusWidget"],
-div[class*="ott-promo"],
-div[class*="subscriptionWidget"] {
-  display: none !important;
-}
+/* Kinopoisk Light Button & Popup Styles v91.0 */
 
 .kp-dl-wrapper {
   position: relative !important;
@@ -366,7 +353,7 @@ div[class*="subscriptionWidget"] {
   to { transform: rotate(360deg); }
 }
 
-/* Tooltip Popover Styles for Poster Hover v90.0 */
+/* Tooltip Popover Styles for Poster Hover v91.0 */
 
 .kp-dl-hover-tooltip {
   position: fixed !important;

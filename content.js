@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v89.0.0
- * Pure Commercial Ad Cleaner, Dual Rating Badges (KP + IMDb), Guaranteed Runtime & Original Synopsis
+ * Kinopoisk Downloader - Content Script v90.0.0
+ * Ultra-Safe Ad Cleaner (Zero White Screens), Dual Ratings (KP + IMDb), Guaranteed Runtime & Clean Tooltip
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v89.0.0');
+  console.log('[Kinopoisk Downloader] Active v90.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -62,43 +62,39 @@
     return false;
   }
 
-  // --- Strict Ad & Anti-Adblock Cleaner ---
+  // --- Ultra-Safe Commercial Ad Cleaner (Never touches page layout or app roots) ---
   function removeAnnoyingAds() {
-    // 1. Target elements with text "РЕКЛАМА" (e.g. Huawei commercial banners)
-    document.querySelectorAll('span, div, p, small, a').forEach(el => {
-      if (el.children.length === 0 && el.innerText && el.innerText.trim().toUpperCase() === 'РЕКЛАМА') {
-        let container = el.closest('div[class*="banner"], div[class*="ad"], section, body > div > div');
-        if (container && container !== document.body) {
-          container.remove();
-        } else if (el.parentElement) {
-          el.parentElement.remove();
+    const mainAppRoot = document.getElementById('__next') || document.getElementById('root') || document.querySelector('main');
+
+    // 1. Hide Anti-Adblock popup specifically by text without node deletion
+    document.querySelectorAll('div, section').forEach(el => {
+      if (el.innerText && el.innerText.includes('Кажется, вы используете блокировщик рекламы')) {
+        if (el !== mainAppRoot && !el.contains(mainAppRoot)) {
+          el.style.display = 'none';
         }
       }
     });
 
-    // 2. Remove Anti-Adblock popup notification
-    document.querySelectorAll('div, section').forEach(el => {
-      if (el.innerText && el.innerText.includes('Кажется, вы используете блокировщик рекламы')) {
-        const banner = el.closest('div[class*="banner"], div[style*="fixed"]') || el;
-        banner.remove();
-      }
-    });
-
-    // 3. Remove known ad/promo selectors
-    const selectors = [
+    // 2. Hide top commercial ad banners safely (e.g. Huawei ad banner)
+    const adSelectors = [
+      '[data-tid="ad-banner"]',
+      '[data-tid="banner-commercial"]',
       '[class*="antiAdBlock"]',
       '[class*="anti-adblock"]',
-      '[class*="header__plus"]',
+      'div[class*="header__plus"]',
       'a[href*="plus.yandex.ru"]',
       'div[class*="plusWidget"]',
       'div[class*="ott-promo"]',
       'div[class*="subscriptionWidget"]',
-      '[data-tid="banner"]',
-      '[data-tid="ad-banner"]',
       'iframe[src*="ad"]'
     ];
-    selectors.forEach(sel => {
-      document.querySelectorAll(sel).forEach(e => e.remove());
+
+    adSelectors.forEach(sel => {
+      document.querySelectorAll(sel).forEach(el => {
+        if (el !== mainAppRoot && !el.contains(mainAppRoot)) {
+          el.style.display = 'none';
+        }
+      });
     });
   }
 
@@ -789,7 +785,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v89.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v90.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

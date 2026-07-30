@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v77.0.0
- * Disabled Download Button on Gallery/Subpages (/posters/, /stills/, /wallpapers/, etc.)
+ * Kinopoisk Downloader - Content Script v78.0.0
+ * Disabled Hover Tooltips on Big Promo/Hero Banners
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v77.0.0');
+  console.log('[Kinopoisk Downloader] Active v78.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -24,9 +24,44 @@
 
   function isMainMediaPage() {
     const pathname = location.pathname;
-    // Strict match for main movie/series page: /film/123/ or /series/456/
-    // Excludes subpages like /posters/, /stills/, /wallpapers/, /awards/, /dates/, /cast/
     return /^\/(film|series)\/(\d+)\/?$/.test(pathname);
+  }
+
+  function isPromoBannerLink(link) {
+    const href = link.getAttribute('href') || '';
+
+    // 1. URL params check for Kinopoisk main page promo/hero banners
+    if (
+      href.includes('from_block=trailer_promo') ||
+      href.includes('from_block=promo') ||
+      href.includes('from_block=main_hero') ||
+      href.includes('from_block=hero') ||
+      href.includes('from_block=slider')
+    ) {
+      return true;
+    }
+
+    // 2. DOM tree check for promo/hero/billboard containers that already display description text
+    let parent = link.parentElement;
+    for (let i = 0; i < 5; i++) {
+      if (!parent || parent.tagName === 'BODY') break;
+      
+      const classAndTid = ((parent.className || '') + ' ' + (parent.getAttribute('data-tid') || '')).toLowerCase();
+      if (
+        classAndTid.includes('promo') ||
+        classAndTid.includes('hero') ||
+        classAndTid.includes('banner') ||
+        classAndTid.includes('billboard') ||
+        classAndTid.includes('featured')
+      ) {
+        if (parent.querySelector('p, [class*="description"], [class*="synopsis"], [class*="text"]')) {
+          return true;
+        }
+      }
+      parent = parent.parentElement;
+    }
+
+    return false;
   }
 
   // --- Hover Tooltip Feature ---
@@ -195,12 +230,18 @@
       const link = e.target.closest('a[href*="/film/"], a[href*="/series/"]');
       if (!link) return;
 
+      // 1. Exclude promo/hero banners that already display full description & buttons
+      if (isPromoBannerLink(link)) {
+        return;
+      }
+
       const href = link.getAttribute('href') || '';
       const match = href.match(/\/(film|series)\/(\d+)/);
       if (!match) return;
 
       const filmId = match[2];
 
+      // 2. Exclude the film/series currently being viewed
       if (currentPageFilmId && filmId === currentPageFilmId) {
         return;
       }
@@ -405,7 +446,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v77.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v78.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

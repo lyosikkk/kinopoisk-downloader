@@ -1,4 +1,4 @@
-/* Kinopoisk Light Button & Popup Styles v73.0 - 2nd Line Placement & Poster Hover Tooltips */
+/* Kinopoisk Light Button & Popup Styles v80.0 - Smart Tooltip Slogan & Clean Typography */
 
 .kp-dl-wrapper {
   position: relative !important;
@@ -353,7 +353,7 @@
   to { transform: rotate(360deg); }
 }
 
-/* Tooltip Popover Styles for Poster Hover v73.0 */
+/* Tooltip Popover Styles for Poster Hover v80.0 */
 
 .kp-dl-hover-tooltip {
   position: fixed !important;
@@ -422,13 +422,30 @@
   font-weight: 600 !important;
 }
 
+.kp-dl-tooltip-slogan {
+  font-size: 12px !important;
+  font-style: italic !important;
+  color: #ff9933 !important;
+  margin-bottom: 6px !important;
+  line-height: 1.35 !important;
+  display: block !important;
+}
+
 .kp-dl-tooltip-desc {
   font-size: 13px !important;
   line-height: 1.45 !important;
   color: #d1d1d6 !important;
-  display: -webkit-box !important;
-  -webkit-line-clamp: 6 !important;
-  -webkit-box-orient: vertical !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
+  max-height: 140px !important;
+  overflow-y: auto !important;
+  padding-right: 2px !important;
+  word-break: break-word !important;
+}
+
+.kp-dl-tooltip-desc::-webkit-scrollbar {
+  width: 4px !important;
+}
+
+.kp-dl-tooltip-desc::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2) !important;
+  border-radius: 2px !important;
 }

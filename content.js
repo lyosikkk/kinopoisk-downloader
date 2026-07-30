@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v79.0.0
- * Strict Tooltip State Reset & Instant Render
+ * Kinopoisk Downloader - Content Script v80.0.0
+ * Tooltip Slogan & Sentence Extraction Support
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v79.0.0');
+  console.log('[Kinopoisk Downloader] Active v80.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -78,6 +78,33 @@
       .trim();
   }
 
+  function extractSmartSynopsis(fullText, slogan) {
+    if (!fullText) return slogan ? `«${slogan.replace(/^["'«»]+|["'«»]+$/g, '')}»` : '';
+
+    let clean = fullText.replace(/[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000]/g, ' ').trim();
+    clean = clean.replace(/^Рецензия на фильм\s+[^:]+:\s*/i, '').trim();
+
+    if (clean.length <= 220) return clean;
+
+    const sentences = clean.match(/[^.!?]+[.!?]+/g) || [];
+    let summary = '';
+    for (const s of sentences) {
+      if ((summary + s).length <= 240) {
+        summary += s;
+      } else {
+        break;
+      }
+    }
+
+    if (summary.trim().length >= 35) {
+      return summary.trim();
+    }
+
+    const cut = clean.substring(0, 200);
+    const lastSpace = cut.lastIndexOf(' ');
+    return (lastSpace > 40 ? cut.substring(0, lastSpace) : cut).trim() + '.';
+  }
+
   function scanPageNextDataCache() {
     const scriptEl = document.getElementById('__NEXT_DATA__');
     if (!scriptEl) return;
@@ -89,10 +116,12 @@
         if (!obj || typeof obj !== 'object') return;
 
         const id = obj.id || obj.filmId || obj.movieId;
-        const shortDesc = obj.topText || obj.shortDescription || obj.synopsis || obj.slogan;
+        const rawShortDesc = obj.topText || obj.shortDescription;
+        const rawSynopsis = obj.synopsis || obj.description;
+        const slogan = obj.slogan ? obj.slogan.replace(/^["'«»]+|["'«»]+$/g, '').trim() : '';
         const rawTitle = obj.title || obj.name || obj.ruName || obj.russianTitle;
 
-        if (id && rawTitle && shortDesc) {
+        if (id && rawTitle && (rawShortDesc || rawSynopsis || slogan)) {
           const year = obj.year || (obj.releaseDate ? String(obj.releaseDate).substring(0, 4) : '');
           let rating = '';
           const r = obj.rating?.filmCrypto?.rating || obj.rating?.rating || obj.ratingValue || obj.rating;
@@ -101,12 +130,15 @@
             if (!isNaN(numR) && numR > 0) rating = numR.toFixed(1);
           }
 
+          const finalDescription = rawShortDesc ? rawShortDesc.trim() : extractSmartSynopsis(rawSynopsis, slogan);
+
           descriptionCache[String(id)] = {
             filmId: String(id),
             title: cleanTitleString(rawTitle),
             year: year ? String(year) : '',
             rating,
-            description: shortDesc.trim()
+            slogan: slogan || '',
+            description: finalDescription
           };
         }
 
@@ -141,6 +173,7 @@
       <div class="kp-dl-tooltip-meta">
         <span class="kp-dl-tooltip-year"></span>
       </div>
+      <div class="kp-dl-tooltip-slogan"></div>
       <div class="kp-dl-tooltip-desc"></div>
     `;
     document.body.appendChild(tooltipEl);
@@ -179,6 +212,7 @@
     const titleEl = tooltipEl.querySelector('.kp-dl-tooltip-title');
     const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
     const yearEl = tooltipEl.querySelector('.kp-dl-tooltip-year');
+    const sloganEl = tooltipEl.querySelector('.kp-dl-tooltip-slogan');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
     if (titleEl) titleEl.innerText = '';
@@ -187,6 +221,10 @@
       ratingEl.style.display = 'none';
     }
     if (yearEl) yearEl.innerText = '';
+    if (sloganEl) {
+      sloganEl.innerText = '';
+      sloganEl.style.display = 'none';
+    }
     if (descEl) descEl.innerText = '';
   }
 
@@ -202,12 +240,12 @@
   function showTooltipData(data, targetEl) {
     if (!tooltipEl || !data) return;
 
-    // STRICTLY CLEAR OLD STATE FIRST
     resetTooltipDOM();
 
     const titleEl = tooltipEl.querySelector('.kp-dl-tooltip-title');
     const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
     const yearEl = tooltipEl.querySelector('.kp-dl-tooltip-year');
+    const sloganEl = tooltipEl.querySelector('.kp-dl-tooltip-slogan');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
     if (titleEl) titleEl.innerText = cleanTitleString(data.title) || 'Загрузка...';
@@ -225,6 +263,11 @@
 
     if (yearEl && data.year) {
       yearEl.innerText = `${data.year} г.`;
+    }
+
+    if (sloganEl && data.slogan) {
+      sloganEl.innerText = `«${data.slogan}»`;
+      sloganEl.style.display = 'block';
     }
 
     if (descEl) {
@@ -460,7 +503,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v79.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v80.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

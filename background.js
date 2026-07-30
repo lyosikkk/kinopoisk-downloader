@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v79.0.0
- * 50x Ultra-Fast Stream Fetching & Permanent Background Cache
+ * Background Service Worker for Kinopoisk Downloader v80.0.0
+ * Smart Sentence Extraction Engine & Slogan Extraction
  */
 
 const globalDescriptionCache = {};
@@ -41,17 +41,46 @@ function cleanTitleString(str) {
     .trim();
 }
 
+function extractSmartSynopsis(fullText, slogan) {
+  if (!fullText) return slogan ? `«${slogan.replace(/^["'«»]+|["'«»]+$/g, '')}»` : '';
+
+  let clean = fullText.replace(/[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000]/g, ' ').trim();
+  clean = clean.replace(/^Рецензия на фильм\s+[^:]+:\s*/i, '').trim();
+
+  if (clean.length <= 220) return clean;
+
+  const sentences = clean.match(/[^.!?]+[.!?]+/g) || [];
+  let summary = '';
+  for (const s of sentences) {
+    if ((summary + s).length <= 240) {
+      summary += s;
+    } else {
+      break;
+    }
+  }
+
+  if (summary.trim().length >= 35) {
+    return summary.trim();
+  }
+
+  const cut = clean.substring(0, 200);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > 40 ? cut.substring(0, lastSpace) : cut).trim() + '.';
+}
+
 function findKinopoiskMediaData(obj, targetId) {
   if (!obj || typeof obj !== 'object') return null;
 
   const currentId = obj.id || obj.filmId || obj.movieId;
   const isMatchId = currentId && String(currentId) === String(targetId);
 
-  const shortDesc = obj.topText || obj.shortDescription || obj.synopsis || obj.slogan;
+  const rawShortDesc = obj.topText || obj.shortDescription;
+  const rawSynopsis = obj.synopsis || obj.description;
+  const slogan = obj.slogan ? obj.slogan.replace(/^["'«»]+|["'«»]+$/g, '').trim() : '';
   const rawTitle = obj.title || obj.name || obj.ruName || obj.russianTitle;
 
-  if (isMatchId || shortDesc) {
-    if (rawTitle && shortDesc) {
+  if (isMatchId || rawShortDesc || rawSynopsis) {
+    if (rawTitle && (rawShortDesc || rawSynopsis || slogan)) {
       const title = cleanTitleString(rawTitle);
       const year = obj.year || (obj.releaseDate ? String(obj.releaseDate).substring(0, 4) : '');
       
@@ -62,12 +91,15 @@ function findKinopoiskMediaData(obj, targetId) {
         if (!isNaN(numR) && numR > 0) rating = numR.toFixed(1);
       }
 
+      const finalDescription = rawShortDesc ? rawShortDesc.trim() : extractSmartSynopsis(rawSynopsis, slogan);
+
       return {
         filmId: targetId,
         title,
         year: year ? String(year) : '',
         rating,
-        description: shortDesc.trim()
+        slogan: slogan || '',
+        description: finalDescription
       };
     }
   }
@@ -112,7 +144,6 @@ async function fetchFastStreamHtml(url, signal) {
           chunks += decoder.decode(value, { stream: true });
         }
 
-        // Abort network stream as soon as __NEXT_DATA__ script block is closed or topText exists
         if (chunks.includes('</script>') && chunks.includes('__NEXT_DATA__')) {
           reader.cancel().catch(() => {});
           break;
@@ -169,6 +200,12 @@ async function fetchFilmDescription(filmId) {
         let title = '';
         let year = '';
         let rating = '';
+        let slogan = '';
+
+        const sloganMatch = html.match(/<tr[^>]*>\s*<td[^>]*>Слоган<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
+        if (sloganMatch) {
+          slogan = sloganMatch[1].replace(/<[^>]+>/g, '').replace(/^["'«»]+|["'«»]+$/g, '').trim();
+        }
 
         const topTextMatch = html.match(/class="[^"]*topText[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
                              html.match(/class="[^"]*socialArgument[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
@@ -198,13 +235,7 @@ async function fetchFilmDescription(filmId) {
           const ogDesc = html.match(/<meta\s+property="og:description"\s+content="([^"]+)"/i) ||
                          html.match(/<meta\s+name="description"\s+content="([^"]+)"/i);
           if (ogDesc) {
-            const fullDesc = ogDesc[1].replace(/^Рецензия на фильм\s+[^:]+:\s*/i, '').trim();
-            const periodIdx = fullDesc.indexOf('.');
-            if (periodIdx > 20 && periodIdx < 160) {
-              shortDesc = fullDesc.substring(0, periodIdx + 1);
-            } else {
-              shortDesc = fullDesc;
-            }
+            shortDesc = extractSmartSynopsis(ogDesc[1], slogan);
           }
         }
 
@@ -214,6 +245,7 @@ async function fetchFilmDescription(filmId) {
             title: cleanTitleString(title),
             year: year ? String(year) : '',
             rating,
+            slogan,
             description: shortDesc.replace(/[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000]/g, ' ').trim()
           };
           globalDescriptionCache[filmId] = result;
@@ -238,7 +270,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v79.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v80.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -796,7 +828,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v79.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v80.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

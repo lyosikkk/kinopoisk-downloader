@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v96.0.0
- * Universal IMDb Live Rating Fetcher (Direct IMDb.com + Suggestion API + Fallback Cache)
+ * Background Service Worker for Kinopoisk Downloader v97.0.0
+ * Universal IMDb Live Rating Extractor (TT-Regex + Transliteration Search + Kinopoisk Fallback)
  */
 
 const globalDescriptionCache = {};
@@ -30,6 +30,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 });
+
+function cyrillicToTranslit(text) {
+  if (!text) return '';
+  const map = {
+    'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh',
+    'з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o',
+    'п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts',
+    'ч':'ch','ш':'sh','щ':'shch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'
+  };
+  return text.toLowerCase().split('').map(ch => map[ch] || ch).join('');
+}
 
 function cleanTitleString(str) {
   if (!str) return '';
@@ -100,15 +111,19 @@ function parseRatingValue(rObj) {
   return '';
 }
 
-// Fetch Live True Rating Directly from IMDb.com with universal query search
-async function fetchTrueImdbRating(imdbId, origTitle = '', cardTitle = '', fallbackImdb = '') {
+// Fetch Live True Rating Directly from IMDb.com with universal query & transliteration search
+async function fetchTrueImdbRating(imdbId, origTitle = '', cardTitle = '', year = '', fallbackImdb = '') {
   let targetId = imdbId;
 
   // 1. Try resolving tt ID via IMDb Suggestion API if imdbId is missing
   if (!targetId) {
-    const searchQueries = [origTitle, cardTitle].filter(Boolean);
+    const candidates = [
+      origTitle,
+      cyrillicToTranslit(cardTitle),
+      cardTitle
+    ].filter(Boolean);
 
-    for (const rawQ of searchQueries) {
+    for (const rawQ of candidates) {
       if (targetId) break;
       try {
         const q = rawQ.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
@@ -119,7 +134,14 @@ async function fetchTrueImdbRating(imdbId, origTitle = '', cardTitle = '', fallb
           if (sugRes.ok) {
             const sugData = await sugRes.json();
             if (sugData && Array.isArray(sugData.d) && sugData.d.length > 0) {
-              const match = sugData.d.find(item => item.id && item.id.startsWith('tt'));
+              let match = null;
+              if (year) {
+                const targetY = parseInt(year, 10);
+                match = sugData.d.find(item => item.id && item.id.startsWith('tt') && item.y && Math.abs(item.y - targetY) <= 1);
+              }
+              if (!match) {
+                match = sugData.d.find(item => item.id && item.id.startsWith('tt'));
+              }
               if (match) targetId = match.id;
             }
           }
@@ -384,8 +406,11 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
         let imdbId = '';
         let fallbackImdb = '';
 
-        const ttMatch = html.match(/tt\d{7,8}/i);
-        if (ttMatch) imdbId = ttMatch[0];
+        // Extract tt ID directly from HTML using regex scan
+        const ttMatches = Array.from(html.matchAll(/tt\d{7,8}/gi));
+        if (ttMatches.length > 0) {
+          imdbId = ttMatches[0][0];
+        }
 
         const kpImdbMatch = html.match(/IMDb:\s*([\d\.]+)/i) || html.match(/"imdb":\s*([\d\.]+)/i) || html.match(/"ratingImdb":\s*"?([\d\.]+)"?/i);
         if (kpImdbMatch) fallbackImdb = kpImdbMatch[1];
@@ -406,8 +431,8 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
           if (origMatch) origTitle = origMatch[1].trim();
         }
 
-        // Fetch Live True IMDb Rating directly from IMDb.com!
-        const liveImdbRating = await fetchTrueImdbRating(imdbId, origTitle || cardTitle, cardTitle, fallbackImdb);
+        // Fetch Live True IMDb Rating directly from IMDb.com via tt ID, Transliteration, or Title
+        const liveImdbRating = await fetchTrueImdbRating(imdbId, origTitle, cardTitle, found?.year, fallbackImdb);
 
         if (found) {
           found.ratingImdb = liveImdbRating || parseRatingValue(fallbackImdb);
@@ -497,7 +522,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v96.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v97.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -1055,7 +1080,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v96.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v97.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

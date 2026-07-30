@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v105.0.0
- * Poster Tooltip IMDb Badges + Side-by-Side Main Page IMDb Badge Injector with Direct XML Fallback
+ * Kinopoisk Downloader - Content Script v106.0.0
+ * Poster Tooltip IMDb Badges + Under-Score Main Page IMDb Badge Injector
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v105.0.0');
+  console.log('[Kinopoisk Downloader] Active v106.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -69,14 +69,20 @@
     if (/^[1-9]\.\d$/.test(s)) return '';
 
     s = s.replace(/^[1-9]\.\d\s+/, '').replace(/\s+[1-9]\.\d$/, '');
+    
+    // Strip year and everything after it
     s = s.replace(/[\.,\s]+\b(19\d\d|20\d\d)\b[\s\S]*/gi, '');
+
+    // Strip genre suffixes (e.g. ". драма", ", триллер", " - комедия", ". сериал")
+    s = s.replace(/[\.,\s\-—]+\s*(драма|комедия|криминал|боевик|триллер|ужасы|фантастика|фэнтези|мелодрама|детектив|приключения|мультфильм|аниме|документальный|биография|история|сериал)[\s\S]*/gi, '');
+
     s = s.replace(/^["'«»“”„\s\.,\-—]+|["'«»“”„\s\.,\-—]+$/g, '').trim();
 
     return s;
   }
 
   async function fetchKinopoiskRatingXmlDirect(filmId) {
-    if (!filmId) return null;
+    if (!filmId || !/^\d+$/.test(String(filmId))) return null;
     try {
       const url = `https://rating.kinopoisk.ru/${filmId}.xml`;
       const res = await fetch(url);
@@ -145,18 +151,11 @@
 
       const parent = scoreEl.parentElement;
       if (parent) {
-        if (window.getComputedStyle(parent).display.includes('flex')) {
-          parent.appendChild(badge);
+        // Place badge directly BELOW Kinopoisk score element
+        if (scoreEl.nextSibling) {
+          parent.insertBefore(badge, scoreEl.nextSibling);
         } else {
-          const container = document.createElement('div');
-          container.className = 'kp-dl-score-row';
-          container.style.display = 'inline-flex';
-          container.style.alignItems = 'center';
-          container.style.gap = '12px';
-
-          parent.insertBefore(container, scoreEl);
-          container.appendChild(scoreEl);
-          container.appendChild(badge);
+          parent.appendChild(badge);
         }
       }
     };
@@ -532,8 +531,15 @@
       runtimeEl.style.display = 'none';
     }
 
+    const smartDesc = extractSmartSynopsis(data.description);
     if (descEl) {
-      descEl.innerText = extractSmartSynopsis(data.description) || '';
+      if (smartDesc) {
+        descEl.innerText = smartDesc;
+        descEl.style.display = 'block';
+      } else {
+        descEl.innerText = '';
+        descEl.style.display = 'none';
+      }
     }
 
     positionTooltip(targetEl);
@@ -570,7 +576,7 @@
       currentHoverFilmId = filmId;
       clearTimeout(hoverTimer);
 
-      const isCached = Boolean(descriptionCache[filmId] && descriptionCache[filmId].ratingImdb);
+      const isCached = Boolean(descriptionCache[filmId] && (descriptionCache[filmId].ratingImdb || descriptionCache[filmId].description));
       const delayMs = isCached ? 20 : 120;
 
       const cardTitle = extractCardTitle(link);
@@ -579,7 +585,7 @@
       hoverTimer = setTimeout(() => {
         if (currentHoverFilmId !== filmId) return;
 
-        if (descriptionCache[filmId] && descriptionCache[filmId].ratingImdb) {
+        if (descriptionCache[filmId] && (descriptionCache[filmId].ratingImdb || descriptionCache[filmId].description)) {
           showTooltipData(descriptionCache[filmId], link, isSeries);
         } else {
           showTooltipData({
@@ -589,7 +595,7 @@
             description: ''
           }, link, isSeries);
 
-          // 1. Direct XML Fetch for instant IMDb rating
+          // 1. Direct XML Fetch for instant IMDb rating (numeric ID)
           fetchKinopoiskRatingXmlDirect(filmId).then(xmlData => {
             if (xmlData && xmlData.imdb && currentHoverFilmId === filmId) {
               if (!descriptionCache[filmId]) {
@@ -632,7 +638,7 @@
                     title: cardTitle || 'Кинопоиск',
                     rating: cardRating,
                     runtimeText: '',
-                    description: 'Описание отсутствует.'
+                    description: ''
                   }, link, isSeries);
                 }
               }
@@ -810,7 +816,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v105.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v106.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',

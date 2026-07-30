@@ -1,6 +1,6 @@
 /**
- * Background Service Worker for Kinopoisk Downloader v105.0.0
- * Instant Kinopoisk Rating XML API Integration + Direct IMDb Fallback
+ * Kinopoisk Downloader - Background v106.0.0
+ * Pure Title Filter (Genre & Year Stripper) + HD Kinopoisk UUID Resolver + Rating XML
  */
 
 const globalDescriptionCache = {};
@@ -49,7 +49,13 @@ function cleanTitleString(str) {
   if (/^[1-9]\.\d$/.test(s)) return '';
 
   s = s.replace(/^[1-9]\.\d\s+/, '').replace(/\s+[1-9]\.\d$/, '');
+  
+  // Strip year and everything after it
   s = s.replace(/[\.,\s]+\b(19\d\d|20\d\d)\b[\s\S]*/gi, '');
+
+  // Strip genre suffixes (e.g. ". драма", ", триллер", " - комедия", ". сериал")
+  s = s.replace(/[\.,\s\-—]+\s*(драма|комедия|криминал|боевик|триллер|ужасы|фантастика|фэнтези|мелодрама|детектив|приключения|мультфильм|аниме|документальный|биография|история|сериал)[\s\S]*/gi, '');
+
   s = s.replace(/^["'«»“”„\s\.,\-—]+|["'«»“”„\s\.,\-—]+$/g, '').trim();
 
   return s;
@@ -98,9 +104,8 @@ function parseRatingValue(rObj) {
   return '';
 }
 
-// Ultra-fast Kinopoisk Rating XML endpoint fetcher (<30ms response)
 async function fetchKinopoiskRatingXml(filmId) {
-  if (!filmId) return null;
+  if (!filmId || !/^\d+$/.test(String(filmId))) return null;
   try {
     const url = `https://rating.kinopoisk.ru/${filmId}.xml`;
     const controller = new AbortController();
@@ -390,7 +395,7 @@ function findKinopoiskMediaData(obj, targetId, targetTitle = '', hintIsSeries = 
           rating,
           ratingImdb: '',
           runtimeText: '',
-          description: descToUse || 'Описание отсутствует.'
+          description: descToUse || ''
         };
       }
     }
@@ -439,10 +444,13 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
     return globalDescriptionCache[safeFilmId];
   }
 
-  // 1. Instantly fetch Kinopoisk Rating XML API (contains exact IMDb rating!)
+  // 1. Instantly fetch Kinopoisk Rating XML API if numeric ID
   const xmlData = await fetchKinopoiskRatingXml(safeFilmId);
 
-  const targetUrl = hintIsSeries ? `https://www.kinopoisk.ru/series/${safeFilmId}/` : `https://www.kinopoisk.ru/film/${safeFilmId}/`;
+  const isUuid = safeFilmId.length > 15 || safeFilmId.includes('-');
+  const targetUrl = isUuid 
+    ? `https://hd.kinopoisk.ru/film/${safeFilmId}`
+    : (hintIsSeries ? `https://www.kinopoisk.ru/series/${safeFilmId}/` : `https://www.kinopoisk.ru/film/${safeFilmId}/`);
 
   try {
     const controller = new AbortController();
@@ -514,7 +522,8 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
       const topTextMatch = html.match(/class="[^"]*topText[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
                            html.match(/class="[^"]*socialArgument[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
                            html.match(/class="[^"]*synopsis[^"]*"[^>]*>([\s\S]*?)<\/p>/i) ||
-                           html.match(/data-tid="[^"]*synopsis[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+                           html.match(/data-tid="[^"]*synopsis[^"]*"[^>]*>([\s\S]*?)<\/div>/i) ||
+                           html.match(/meta\s+name="description"\s+content="([^"]+)"/i);
       if (topTextMatch) {
         shortDesc = extractSmartSynopsis(topTextMatch[1].replace(/<[^>]+>/g, ''));
       }
@@ -538,14 +547,6 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
         title = cleanTitleString(ogTitle[1].split('(')[0]);
       }
 
-      if (!shortDesc) {
-        const ogDesc = html.match(/<meta\s+property="og:description"\s+content="([^"]+)"/i) ||
-                       html.match(/<meta\s+name="description"\s+content="([^"]+)"/i);
-        if (ogDesc) {
-          shortDesc = extractSmartSynopsis(ogDesc[1]);
-        }
-      }
-
       if (shortDesc || title) {
         const result = {
           filmId: safeFilmId,
@@ -554,14 +555,13 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
           rating,
           ratingImdb: finalImdbRating,
           runtimeText: runtimeText || '',
-          description: shortDesc || 'Описание отсутствует.'
+          description: shortDesc || ''
         };
         globalDescriptionCache[safeFilmId] = result;
         return result;
       }
     }
 
-    // Direct fallback from XML if HTML fetch fails or is blocked!
     if (xmlData && (xmlData.imdb || xmlData.kp)) {
       const result = {
         filmId: safeFilmId,
@@ -570,7 +570,7 @@ async function fetchFilmDescription(filmId, cardTitle = '', hintIsSeries = false
         rating: xmlData.kp,
         ratingImdb: xmlData.imdb,
         runtimeText: '',
-        description: 'Описание отсутствует.'
+        description: ''
       };
       globalDescriptionCache[safeFilmId] = result;
       return result;
@@ -592,7 +592,7 @@ function arrayBufferToBase64(buffer) {
 
 async function downloadRealTorrentFile(rawUrl, filename) {
   const safeFilename = (filename || 'movie.torrent').replace(/[/\\?%*:|"<>]/g, '_');
-  console.log('[Background v105.0] Fetching pure .torrent file:', rawUrl);
+  console.log('[Background v106.0] Fetching pure .torrent file:', rawUrl);
 
   const downloadTargets = [
     rawUrl,
@@ -1150,7 +1150,7 @@ async function searchMovieTorrents(ruTitle, origTitle, year, isSeries) {
 
   unique.sort((a, b) => b.seeds - a.seeds);
 
-  console.log(`[Universal Search v105.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
+  console.log(`[Universal Search v106.0] Total alive found for "${cleanRu}" (isSeries=${isSeries}): ${unique.length}`);
 
   return unique;
 }

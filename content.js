@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v86.0.0
- * Systemic Structural Title Extraction & Strict Rating Discrimination
+ * Kinopoisk Downloader - Content Script v87.0.0
+ * Dual Rating (KP + IMDb), Runtime/Seasons Info & Ad Hiding
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v86.0.0');
+  console.log('[Kinopoisk Downloader] Active v87.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -60,6 +60,25 @@
     }
 
     return false;
+  }
+
+  // --- Ad & Yandex Plus Banner Cleaner ---
+  function removeAnnoyingAds() {
+    const adSelectors = [
+      '[class*="plusWidget"]',
+      '[class*="header__plus"]',
+      'a[href*="plus.yandex.ru"]',
+      'div[class*="promoBanner"]',
+      'div[class*="subscription-banner"]',
+      'div[class*="buy-button-wrapper"]',
+      'div[class*="ott-promo"]',
+      'div[class*="subscriptionWidget"]'
+    ];
+
+    for (const selector of adSelectors) {
+      const els = document.querySelectorAll(selector);
+      els.forEach(el => el.remove());
+    }
   }
 
   // --- Hover Tooltip Feature ---
@@ -205,6 +224,12 @@
     return '';
   }
 
+  function parseImdbRating(obj) {
+    if (!obj) return '';
+    const imdbCandidate = obj.imdb || obj.imdbRating || obj.rating?.imdb || obj.rating?.filmCrypto?.imdbRating;
+    return parseRatingValue(imdbCandidate);
+  }
+
   function scanPageNextDataCache() {
     const scriptEl = document.getElementById('__NEXT_DATA__');
     if (!scriptEl) return;
@@ -223,6 +248,7 @@
         if (id && rawTitle && (rawShortDesc || rawSynopsis)) {
           const year = obj.year || (obj.releaseDate ? String(obj.releaseDate).substring(0, 4) : '');
           const rating = parseRatingValue(obj.rating) || parseRatingValue(obj.userRating) || parseRatingValue(obj.ratingValue);
+          const ratingImdb = parseImdbRating(obj);
 
           const finalDescription = rawShortDesc ? rawShortDesc.trim() : extractSmartSynopsis(rawSynopsis);
 
@@ -231,6 +257,7 @@
             title: cleanTitleString(rawTitle),
             year: year ? String(year) : '',
             rating,
+            ratingImdb,
             description: finalDescription
           };
         }
@@ -261,8 +288,12 @@
     tooltipEl.innerHTML = `
       <div class="kp-dl-tooltip-header">
         <div class="kp-dl-tooltip-title"></div>
-        <div class="kp-dl-tooltip-rating"></div>
+        <div class="kp-dl-tooltip-ratings-container">
+          <div class="kp-dl-tooltip-rating" title="Рейтинг Кинопоиска"></div>
+          <div class="kp-dl-tooltip-rating-imdb" title="Рейтинг IMDb"></div>
+        </div>
       </div>
+      <div class="kp-dl-tooltip-runtime"></div>
       <div class="kp-dl-tooltip-desc"></div>
     `;
 
@@ -313,13 +344,23 @@
   function resetTooltipDOM() {
     if (!tooltipEl) return;
     const titleEl = tooltipEl.querySelector('.kp-dl-tooltip-title');
-    const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
+    const ratingKpEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
+    const ratingImdbEl = tooltipEl.querySelector('.kp-dl-tooltip-rating-imdb');
+    const runtimeEl = tooltipEl.querySelector('.kp-dl-tooltip-runtime');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
     if (titleEl) titleEl.innerText = '';
-    if (ratingEl) {
-      ratingEl.innerText = '';
-      ratingEl.style.display = 'none';
+    if (ratingKpEl) {
+      ratingKpEl.innerText = '';
+      ratingKpEl.style.display = 'none';
+    }
+    if (ratingImdbEl) {
+      ratingImdbEl.innerText = '';
+      ratingImdbEl.style.display = 'none';
+    }
+    if (runtimeEl) {
+      runtimeEl.innerText = '';
+      runtimeEl.style.display = 'none';
     }
     if (descEl) descEl.innerText = '';
   }
@@ -340,27 +381,48 @@
     resetTooltipDOM();
 
     const titleEl = tooltipEl.querySelector('.kp-dl-tooltip-title');
-    const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
+    const ratingKpEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
+    const ratingImdbEl = tooltipEl.querySelector('.kp-dl-tooltip-rating-imdb');
+    const runtimeEl = tooltipEl.querySelector('.kp-dl-tooltip-runtime');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
     const cleanTitle = cleanTitleString(data.title);
     if (titleEl) titleEl.innerText = cleanTitle || 'Загрузка...';
 
-    const finalRating = data.rating || extractCardRating(targetEl);
+    const finalRatingKp = data.rating || extractCardRating(targetEl);
 
-    if (ratingEl && finalRating) {
-      const numRating = parseFloat(finalRating);
+    if (ratingKpEl && finalRatingKp) {
+      const numRating = parseFloat(finalRatingKp);
       if (!isNaN(numRating) && numRating > 0) {
-        ratingEl.innerText = numRating.toFixed(1);
-        ratingEl.style.display = 'inline-block';
-        if (numRating >= 7.5) ratingEl.style.background = '#3bb33b';
-        else if (numRating >= 6.0) ratingEl.style.background = '#777777';
-        else ratingEl.style.background = '#e65050';
+        ratingKpEl.innerText = `КП ${numRating.toFixed(1)}`;
+        ratingKpEl.style.display = 'inline-block';
+        if (numRating >= 7.5) ratingKpEl.style.background = '#3bb33b';
+        else if (numRating >= 6.0) ratingKpEl.style.background = '#777777';
+        else ratingKpEl.style.background = '#e65050';
       } else {
-        ratingEl.style.display = 'none';
+        ratingKpEl.style.display = 'none';
       }
-    } else if (ratingEl) {
-      ratingEl.style.display = 'none';
+    } else if (ratingKpEl) {
+      ratingKpEl.style.display = 'none';
+    }
+
+    if (ratingImdbEl && data.ratingImdb) {
+      const numImdb = parseFloat(data.ratingImdb);
+      if (!isNaN(numImdb) && numImdb > 0) {
+        ratingImdbEl.innerText = `IMDb ${numImdb.toFixed(1)}`;
+        ratingImdbEl.style.display = 'inline-block';
+      } else {
+        ratingImdbEl.style.display = 'none';
+      }
+    } else if (ratingImdbEl) {
+      ratingImdbEl.style.display = 'none';
+    }
+
+    if (runtimeEl && data.runtimeText) {
+      runtimeEl.innerText = data.runtimeText;
+      runtimeEl.style.display = 'block';
+    } else if (runtimeEl) {
+      runtimeEl.style.display = 'none';
     }
 
     if (descEl) {
@@ -464,7 +526,7 @@
     }, { passive: true });
   }
 
-  // --- Download Button Logic ---
+  // --- Download Button & Page IMDb Badge Logic ---
 
   function getPluralSeeds(count) {
     if (count === 0) return '0 сидов';
@@ -555,6 +617,23 @@
     return { ruTitle, origTitle, year, isSeries };
   }
 
+  function injectPageImdbBadge(imdbRating) {
+    if (!imdbRating || document.getElementById('kp-dl-page-imdb-badge')) return;
+
+    const ratingContainer = document.querySelector('[class*="rating-value"]') ||
+                            document.querySelector('[class*="film-rating"]') ||
+                            document.querySelector('h1');
+
+    if (ratingContainer) {
+      const badge = document.createElement('span');
+      badge.id = 'kp-dl-page-imdb-badge';
+      badge.className = 'kp-dl-page-imdb-badge';
+      badge.innerText = `IMDb ${imdbRating}`;
+      badge.title = 'Рейтинг IMDb';
+      ratingContainer.appendChild(badge);
+    }
+  }
+
   function findInsertionTarget() {
     const h1El = document.querySelector('h1');
     if (!h1El) return null;
@@ -613,7 +692,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v86.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v87.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',
@@ -699,6 +778,21 @@
 
   function createDownloadButton() {
     if (!isMainMediaPage()) return;
+
+    const currentMatch = location.pathname.match(/\/(film|series)\/([a-zA-Z0-9_-]+)/);
+    if (currentMatch) {
+      const currentFilmId = currentMatch[2];
+      chrome.runtime.sendMessage({
+        action: 'FETCH_FILM_DESCRIPTION',
+        filmId: currentFilmId,
+        cardTitle: ''
+      }, (res) => {
+        if (res && res.success && res.data && res.data.ratingImdb) {
+          injectPageImdbBadge(res.data.ratingImdb);
+        }
+      });
+    }
+
     if (document.getElementById('kp-dl-container')) return;
 
     const filmData = extractFilmData();
@@ -912,6 +1006,7 @@
   }
 
   function checkDownloadButtonState() {
+    removeAnnoyingAds();
     const existing = document.getElementById('kp-dl-container');
     if (!isMainMediaPage()) {
       if (existing) existing.remove();
@@ -923,11 +1018,13 @@
   }
 
   function init() {
+    removeAnnoyingAds();
     initPosterHoverListeners();
     checkDownloadButtonState();
 
     let timer = null;
     const observer = new MutationObserver(() => {
+      removeAnnoyingAds();
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         checkDownloadButtonState();

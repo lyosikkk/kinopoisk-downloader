@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v87.0.0
- * Dual Rating (KP + IMDb), Runtime/Seasons Info & Ad Hiding
+ * Kinopoisk Downloader - Content Script v88.0.0
+ * Orange KP Rating, Pure Emoji-Free Short Synopsis & Safe Ad Cleaner
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v87.0.0');
+  console.log('[Kinopoisk Downloader] Active v88.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -62,23 +62,30 @@
     return false;
   }
 
-  // --- Ad & Yandex Plus Banner Cleaner ---
+  // --- Safe Ad & Anti-Adblock Cleaner ---
   function removeAnnoyingAds() {
-    const adSelectors = [
-      '[class*="plusWidget"]',
-      '[class*="header__plus"]',
+    const selectors = [
+      '[class*="antiAdBlock"]',
+      '[class*="anti-adblock"]',
+      '[class*="AntiAdBlock"]',
+      'div[class*="header__plus"]',
       'a[href*="plus.yandex.ru"]',
-      'div[class*="promoBanner"]',
-      'div[class*="subscription-banner"]',
-      'div[class*="buy-button-wrapper"]',
+      'div[class*="plusWidget"]',
       'div[class*="ott-promo"]',
       'div[class*="subscriptionWidget"]'
     ];
 
-    for (const selector of adSelectors) {
-      const els = document.querySelectorAll(selector);
-      els.forEach(el => el.remove());
+    for (const selector of selectors) {
+      document.querySelectorAll(selector).forEach(el => el.remove());
     }
+
+    // Remove anti-adblock bottom banner if rendered dynamically
+    document.querySelectorAll('div').forEach(div => {
+      if (div.innerText && div.innerText.includes('Кажется, вы используете блокировщик рекламы')) {
+        const parentBanner = div.closest('[class*="banner"]') || div.closest('div[style*="fixed"]') || div;
+        parentBanner.remove();
+      }
+    });
   }
 
   // --- Hover Tooltip Feature ---
@@ -119,28 +126,29 @@
   function extractSmartSynopsis(fullText) {
     if (!fullText) return '';
 
-    let clean = fullText.replace(/[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000]/g, ' ').trim();
+    let clean = String(fullText).replace(/[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000]/g, ' ').trim();
+    clean = clean.replace(/^[\p{Extended_Pictographic}\u2000-\u3299\uD83C-\uDBFF\uDC00-\uDFFF\s\uFE0F\u200D]+/gu, '').trim();
     clean = clean.replace(/^Рецензия на фильм\s+[^:]+:\s*/i, '').trim();
 
-    if (clean.length <= 220) return clean;
+    if (clean.length <= 180) return clean;
 
     const sentences = clean.match(/[^.!?]+[.!?]+/g) || [];
     let summary = '';
     for (const s of sentences) {
-      if ((summary + s).length <= 240) {
+      if ((summary + s).length <= 190) {
         summary += s;
       } else {
         break;
       }
     }
 
-    if (summary.trim().length >= 35) {
+    if (summary.trim().length >= 30) {
       return summary.trim();
     }
 
-    const cut = clean.substring(0, 200);
+    const cut = clean.substring(0, 160);
     const lastSpace = cut.lastIndexOf(' ');
-    return (lastSpace > 40 ? cut.substring(0, lastSpace) : cut).trim() + '.';
+    return (lastSpace > 30 ? cut.substring(0, lastSpace) : cut).trim() + '.';
   }
 
   function extractCardTitle(link) {
@@ -224,10 +232,50 @@
     return '';
   }
 
-  function parseImdbRating(obj) {
-    if (!obj) return '';
-    const imdbCandidate = obj.imdb || obj.imdbRating || obj.rating?.imdb || obj.rating?.filmCrypto?.imdbRating;
-    return parseRatingValue(imdbCandidate);
+  function formatRuntimeText(minutes, seasonsCount, episodesCount, isSeries) {
+    if (isSeries || seasonsCount || episodesCount) {
+      let parts = [];
+      if (seasonsCount) {
+        const s = parseInt(seasonsCount, 10);
+        if (!isNaN(s) && s > 0) {
+          let sWord = 'сезонов';
+          const mod100 = s % 100;
+          const mod10 = s % 10;
+          if (mod100 >= 11 && mod100 <= 19) sWord = 'сезонов';
+          else if (mod10 === 1) sWord = 'сезон';
+          else if (mod10 >= 2 && mod10 <= 4) sWord = 'сезона';
+          parts.push(`${s} ${sWord}`);
+        }
+      }
+      if (episodesCount) {
+        const ep = parseInt(episodesCount, 10);
+        if (!isNaN(ep) && ep > 0) {
+          let epWord = 'серий';
+          const mod100 = ep % 100;
+          const mod10 = ep % 10;
+          if (mod100 >= 11 && mod100 <= 19) epWord = 'серий';
+          else if (mod10 === 1) epWord = 'серия';
+          else if (mod10 >= 2 && mod10 <= 4) epWord = 'серии';
+          parts.push(`${ep} ${epWord}`);
+        }
+      }
+      if (parts.length > 0) return parts.join(', ');
+    }
+
+    if (minutes) {
+      const m = parseInt(minutes, 10);
+      if (!isNaN(m) && m > 0) {
+        if (m >= 60) {
+          const hours = Math.floor(m / 60);
+          const remMin = m % 60;
+          return remMin > 0 ? `${hours} ч ${remMin} мин` : `${hours} ч`;
+        } else {
+          return `${m} мин`;
+        }
+      }
+    }
+
+    return '';
   }
 
   function scanPageNextDataCache() {
@@ -241,24 +289,29 @@
         if (!obj || typeof obj !== 'object') return;
 
         const id = obj.id || obj.filmId || obj.movieId || obj.contentId || obj.uuid || obj.kpId;
-        const rawShortDesc = obj.topText || obj.shortDescription;
+        const rawShortDesc = obj.topText || obj.shortDescription || obj.socialArgument || obj.shortSynopsis;
         const rawSynopsis = obj.synopsis || obj.description || obj.annotation;
         const rawTitle = obj.title || obj.name || obj.ruName || obj.russianTitle || obj.originalTitle;
 
         if (id && rawTitle && (rawShortDesc || rawSynopsis)) {
           const year = obj.year || (obj.releaseDate ? String(obj.releaseDate).substring(0, 4) : '');
           const rating = parseRatingValue(obj.rating) || parseRatingValue(obj.userRating) || parseRatingValue(obj.ratingValue);
-          const ratingImdb = parseImdbRating(obj);
 
-          const finalDescription = rawShortDesc ? rawShortDesc.trim() : extractSmartSynopsis(rawSynopsis);
+          const isSeries = obj.type === 'TV_SERIES' || obj.isSeries || Boolean(obj.seasonsCount || obj.episodesCount);
+          const durationMinutes = obj.filmLength || obj.movieLength || obj.duration || obj.durationMinutes || obj.durationInMinutes || obj.runtime;
+          const seasonsCount = obj.seasonsCount || obj.totalSeasons || (Array.isArray(obj.seasons) ? obj.seasons.length : null);
+          const episodesCount = obj.episodesCount || obj.totalEpisodes;
+
+          const runtimeText = formatRuntimeText(durationMinutes, seasonsCount, episodesCount, isSeries);
+          const descToUse = rawShortDesc ? extractSmartSynopsis(rawShortDesc) : extractSmartSynopsis(rawSynopsis);
 
           descriptionCache[String(id)] = {
             filmId: String(id),
             title: cleanTitleString(rawTitle),
             year: year ? String(year) : '',
             rating,
-            ratingImdb,
-            description: finalDescription
+            runtimeText,
+            description: descToUse
           };
         }
 
@@ -288,10 +341,7 @@
     tooltipEl.innerHTML = `
       <div class="kp-dl-tooltip-header">
         <div class="kp-dl-tooltip-title"></div>
-        <div class="kp-dl-tooltip-ratings-container">
-          <div class="kp-dl-tooltip-rating" title="Рейтинг Кинопоиска"></div>
-          <div class="kp-dl-tooltip-rating-imdb" title="Рейтинг IMDb"></div>
-        </div>
+        <div class="kp-dl-tooltip-rating" title="Рейтинг Кинопоиска"></div>
       </div>
       <div class="kp-dl-tooltip-runtime"></div>
       <div class="kp-dl-tooltip-desc"></div>
@@ -344,19 +394,14 @@
   function resetTooltipDOM() {
     if (!tooltipEl) return;
     const titleEl = tooltipEl.querySelector('.kp-dl-tooltip-title');
-    const ratingKpEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
-    const ratingImdbEl = tooltipEl.querySelector('.kp-dl-tooltip-rating-imdb');
+    const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
     const runtimeEl = tooltipEl.querySelector('.kp-dl-tooltip-runtime');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
     if (titleEl) titleEl.innerText = '';
-    if (ratingKpEl) {
-      ratingKpEl.innerText = '';
-      ratingKpEl.style.display = 'none';
-    }
-    if (ratingImdbEl) {
-      ratingImdbEl.innerText = '';
-      ratingImdbEl.style.display = 'none';
+    if (ratingEl) {
+      ratingEl.innerText = '';
+      ratingEl.style.display = 'none';
     }
     if (runtimeEl) {
       runtimeEl.innerText = '';
@@ -381,41 +426,25 @@
     resetTooltipDOM();
 
     const titleEl = tooltipEl.querySelector('.kp-dl-tooltip-title');
-    const ratingKpEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
-    const ratingImdbEl = tooltipEl.querySelector('.kp-dl-tooltip-rating-imdb');
+    const ratingEl = tooltipEl.querySelector('.kp-dl-tooltip-rating');
     const runtimeEl = tooltipEl.querySelector('.kp-dl-tooltip-runtime');
     const descEl = tooltipEl.querySelector('.kp-dl-tooltip-desc');
 
     const cleanTitle = cleanTitleString(data.title);
     if (titleEl) titleEl.innerText = cleanTitle || 'Загрузка...';
 
-    const finalRatingKp = data.rating || extractCardRating(targetEl);
+    const finalRating = data.rating || extractCardRating(targetEl);
 
-    if (ratingKpEl && finalRatingKp) {
-      const numRating = parseFloat(finalRatingKp);
+    if (ratingEl && finalRating) {
+      const numRating = parseFloat(finalRating);
       if (!isNaN(numRating) && numRating > 0) {
-        ratingKpEl.innerText = `КП ${numRating.toFixed(1)}`;
-        ratingKpEl.style.display = 'inline-block';
-        if (numRating >= 7.5) ratingKpEl.style.background = '#3bb33b';
-        else if (numRating >= 6.0) ratingKpEl.style.background = '#777777';
-        else ratingKpEl.style.background = '#e65050';
+        ratingEl.innerText = numRating.toFixed(1);
+        ratingEl.style.display = 'inline-block';
       } else {
-        ratingKpEl.style.display = 'none';
+        ratingEl.style.display = 'none';
       }
-    } else if (ratingKpEl) {
-      ratingKpEl.style.display = 'none';
-    }
-
-    if (ratingImdbEl && data.ratingImdb) {
-      const numImdb = parseFloat(data.ratingImdb);
-      if (!isNaN(numImdb) && numImdb > 0) {
-        ratingImdbEl.innerText = `IMDb ${numImdb.toFixed(1)}`;
-        ratingImdbEl.style.display = 'inline-block';
-      } else {
-        ratingImdbEl.style.display = 'none';
-      }
-    } else if (ratingImdbEl) {
-      ratingImdbEl.style.display = 'none';
+    } else if (ratingEl) {
+      ratingEl.style.display = 'none';
     }
 
     if (runtimeEl && data.runtimeText) {
@@ -426,7 +455,7 @@
     }
 
     if (descEl) {
-      descEl.innerText = data.description || '';
+      descEl.innerText = extractSmartSynopsis(data.description) || '';
     }
 
     positionTooltip(targetEl);
@@ -526,7 +555,7 @@
     }, { passive: true });
   }
 
-  // --- Download Button & Page IMDb Badge Logic ---
+  // --- Download Button Logic ---
 
   function getPluralSeeds(count) {
     if (count === 0) return '0 сидов';
@@ -617,23 +646,6 @@
     return { ruTitle, origTitle, year, isSeries };
   }
 
-  function injectPageImdbBadge(imdbRating) {
-    if (!imdbRating || document.getElementById('kp-dl-page-imdb-badge')) return;
-
-    const ratingContainer = document.querySelector('[class*="rating-value"]') ||
-                            document.querySelector('[class*="film-rating"]') ||
-                            document.querySelector('h1');
-
-    if (ratingContainer) {
-      const badge = document.createElement('span');
-      badge.id = 'kp-dl-page-imdb-badge';
-      badge.className = 'kp-dl-page-imdb-badge';
-      badge.innerText = `IMDb ${imdbRating}`;
-      badge.title = 'Рейтинг IMDb';
-      ratingContainer.appendChild(badge);
-    }
-  }
-
   function findInsertionTarget() {
     const h1El = document.querySelector('h1');
     if (!h1El) return null;
@@ -692,7 +704,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v87.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v88.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',
@@ -778,20 +790,6 @@
 
   function createDownloadButton() {
     if (!isMainMediaPage()) return;
-
-    const currentMatch = location.pathname.match(/\/(film|series)\/([a-zA-Z0-9_-]+)/);
-    if (currentMatch) {
-      const currentFilmId = currentMatch[2];
-      chrome.runtime.sendMessage({
-        action: 'FETCH_FILM_DESCRIPTION',
-        filmId: currentFilmId,
-        cardTitle: ''
-      }, (res) => {
-        if (res && res.success && res.data && res.data.ratingImdb) {
-          injectPageImdbBadge(res.data.ratingImdb);
-        }
-      });
-    }
 
     if (document.getElementById('kp-dl-container')) return;
 

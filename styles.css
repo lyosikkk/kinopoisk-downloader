@@ -1,13 +1,15 @@
-/* Kinopoisk Light Button & Popup Styles v87.0 - Dual Rating, Runtime & Ad Hiding */
+/* Kinopoisk Light Button & Popup Styles v88.0 - Orange Rating Badge & Clean Tooltip */
 
-/* --- Hiding Yandex Plus & Subscription Banners --- */
-[class*="banner"],
-[class*="plusWidget"],
-[class*="header__plus"],
+/* --- Targeted Ad & Anti-Adblock Cleaner (Safe from Anti-Adblock Detection) --- */
+[class*="antiAdBlock"],
+[class*="anti-adblock"],
+[class*="AntiAdBlock"],
+[class*="adBanner"],
+[class*="Commercial"],
+[class*="commercial"],
+div[class*="header__plus"],
 a[href*="plus.yandex.ru"],
-div[class*="promoBanner"],
-div[class*="subscription-banner"],
-div[class*="buy-button-wrapper"],
+div[class*="plusWidget"],
 div[class*="ott-promo"],
 div[class*="subscriptionWidget"] {
   display: none !important;
@@ -366,7 +368,7 @@ div[class*="subscriptionWidget"] {
   to { transform: rotate(360deg); }
 }
 
-/* Tooltip Popover Styles for Poster Hover v87.0 */
+/* Tooltip Popover Styles for Poster Hover v88.0 */
 
 .kp-dl-hover-tooltip {
   position: fixed !important;
@@ -402,7 +404,7 @@ div[class*="subscriptionWidget"] {
   justify-content: space-between !important;
   align-items: flex-start !important;
   gap: 10px !important;
-  margin-bottom: 6px !important;
+  margin-bottom: 4px !important;
 }
 
 .kp-dl-tooltip-title {
@@ -412,39 +414,22 @@ div[class*="subscriptionWidget"] {
   line-height: 1.3 !important;
 }
 
-.kp-dl-tooltip-ratings-container {
-  display: flex !important;
-  align-items: center !important;
-  gap: 6px !important;
-  flex-shrink: 0 !important;
-}
-
 .kp-dl-tooltip-rating {
-  background: #3bb33b !important;
+  background: #ff6600 !important;
   color: #ffffff !important;
   font-size: 12px !important;
   font-weight: 700 !important;
-  padding: 2px 6px !important;
+  padding: 2px 7px !important;
   border-radius: 6px !important;
   white-space: nowrap !important;
   display: none !important;
-}
-
-.kp-dl-tooltip-rating-imdb {
-  background: #f5c518 !important;
-  color: #000000 !important;
-  font-size: 12px !important;
-  font-weight: 800 !important;
-  padding: 2px 6px !important;
-  border-radius: 6px !important;
-  white-space: nowrap !important;
-  display: none !important;
+  flex-shrink: 0 !important;
 }
 
 .kp-dl-tooltip-runtime {
   font-size: 12px !important;
-  font-weight: 500 !important;
-  color: #a0a0ab !important;
+  font-weight: 600 !important;
+  color: #ff9933 !important;
   margin-bottom: 6px !important;
   display: none !important;
 }
@@ -466,20 +451,4 @@ div[class*="subscriptionWidget"] {
 .kp-dl-tooltip-desc::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.25) !important;
   border-radius: 2px !important;
-}
-
-/* Detail Page IMDb Badge Styling */
-.kp-dl-page-imdb-badge {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 4px !important;
-  background: #f5c518 !important;
-  color: #000000 !important;
-  font-weight: 800 !important;
-  font-size: 13px !important;
-  padding: 3px 8px !important;
-  border-radius: 6px !important;
-  margin-left: 8px !important;
-  vertical-align: middle !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15) !important;
 }

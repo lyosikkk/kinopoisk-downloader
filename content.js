@@ -1,12 +1,12 @@
 /**
- * Kinopoisk Downloader - Content Script v107.0.0
- * Poster Tooltip IMDb Badges + Under-Score Main Page IMDb Badge Injector
+ * Kinopoisk Downloader - Content Script v108.0.0
+ * Poster Tooltip IMDb Badges + Under-Votes Main Page IMDb Badge Injector
  */
 
 (function () {
   'use strict';
 
-  console.log('[Kinopoisk Downloader] Active v107.0.0');
+  console.log('[Kinopoisk Downloader] Active v108.0.0');
 
   let activeQualityFilter = 'ALL';
   let activeAudioFilter = 'ALL';
@@ -149,13 +149,30 @@
       badge.innerText = `IMDb ${imdbVal}`;
       badge.title = 'Текущий живой рейтинг IMDb';
 
-      const parent = scoreEl.parentElement;
-      if (parent) {
-        if (scoreEl.nextSibling) {
-          parent.insertBefore(badge, scoreEl.nextSibling);
-        } else {
-          parent.appendChild(badge);
+      // Find top-right rating column block and insert badge AFTER votes/reviews count
+      let colBlock = scoreEl;
+      for (let i = 0; i < 4; i++) {
+        if (!colBlock.parentElement) break;
+        if (colBlock.parentElement.querySelector('a[href*="votes"], a[href*="reviews"], [class*="voteCount"], [class*="review"]')) {
+          colBlock = colBlock.parentElement;
+          break;
         }
+        colBlock = colBlock.parentElement;
+      }
+
+      const votesEl = colBlock.querySelector('a[href*="votes"], a[href*="reviews"], [class*="voteCount"], [class*="count"]');
+      if (votesEl) {
+        let insertTarget = votesEl;
+        while (insertTarget.parentElement && insertTarget.parentElement !== colBlock) {
+          insertTarget = insertTarget.parentElement;
+        }
+        if (insertTarget.nextSibling) {
+          insertTarget.parentNode.insertBefore(badge, insertTarget.nextSibling);
+        } else {
+          insertTarget.parentNode.appendChild(badge);
+        }
+      } else if (scoreEl.parentElement) {
+        scoreEl.parentElement.appendChild(badge);
       }
     };
 
@@ -832,7 +849,7 @@
     activeSeasonFilter = 'ALL';
     callback();
 
-    console.log('[Kinopoisk Downloader v107.0] Searching torrents:', filmData);
+    console.log('[Kinopoisk Downloader v108.0] Searching torrents:', filmData);
 
     chrome.runtime.sendMessage({
       action: 'SEARCH_TORRENTS',
